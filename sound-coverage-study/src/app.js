@@ -7,6 +7,8 @@
   const STORAGE_KEY = "paga-sound-coverage-study-v1";
   const ROTATION_HANDLE_DISTANCE = 25;
   const ROTATION_HANDLE_HIT_RADIUS = 9;
+  const MIN_VIEW_ZOOM = 0.5;
+  const MAX_VIEW_ZOOM = 8;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -31,6 +33,9 @@
   let toastTimer = 0;
   let measurementMode = false;
   let measurement = null;
+  let viewZoom = 1;
+  let viewPanX = 0;
+  let viewPanY = 0;
 
   function loadProject() {
     try {
@@ -121,8 +126,10 @@
     });
     document.getElementById("viewModeSelect").value = project.viewMode || "compliance";
     syncToggle("gridToggle", project.showGrid);
+    syncToggle("noiseToggle", project.showNoiseZones !== false);
     syncToggle("beamToggle", project.showBeams);
     syncToggle("labelToggle", project.showLabels);
+    updateZoomDisplay();
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
     document.getElementById("backgroundVisibleToggle").checked = project.backgroundVisible !== false;
@@ -135,6 +142,34 @@
     button.classList.toggle("active", Boolean(active));
     button.setAttribute("aria-pressed", String(Boolean(active)));
   }
+  function updateZoomDisplay() {
+    const display = document.getElementById("zoomPercent");
+    if (display) display.textContent = `${Math.round(viewZoom * 100)}%`;
+  }
+
+  function resetViewZoom() {
+    viewZoom = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+    updateZoomDisplay();
+    scheduleCanvasRender();
+  }
+
+  function zoomView(nextZoom, canvasPoint = null) {
+    if (!layout) resizeCanvas();
+    const targetZoom = Model.clamp(Number(nextZoom) || 1, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM);
+    if (Math.abs(targetZoom - viewZoom) < 0.0001) return;
+    const anchor = canvasPoint || { x: layout.cssWidth / 2, y: layout.cssHeight / 2 };
+    const planX = (anchor.x - layout.left) / layout.scale;
+    const planY = (anchor.y - layout.top) / layout.scale;
+    viewZoom = targetZoom;
+    const nextLayout = computeLayout(layout.cssWidth, layout.cssHeight);
+    viewPanX += anchor.x - (nextLayout.left + planX * nextLayout.scale);
+    viewPanY += anchor.y - (nextLayout.top + planY * nextLayout.scale);
+    updateZoomDisplay();
+    scheduleCanvasRender();
+  }
+
   function calibrationMetrics(scaleDenominator = project.backgroundScaleDenominator, dpi = project.backgroundDpi) {
     const pixelWidth = backgroundImage?.naturalWidth || Number(project.backgroundPixelWidth) || 0;
     const pixelHeight = backgroundImage?.naturalHeight || Number(project.backgroundPixelHeight) || 0;
@@ -205,6 +240,7 @@
     project.backgroundDpi = Model.clamp(dpi, 10, 2400);
     resizeStudyGeometry(metrics.width, metrics.depth);
     measurement = null;
+    resetViewZoom();
     markChanged({ syncControls: true });
     showToast(`Scale 1:${round(scaleDenominator, 0)} applied ; ${round(metrics.pixelsPerMetre, 2)} px per metre.`);
   }
@@ -316,15 +352,16 @@
     const padding = { left: 46, right: 30, top: 40, bottom: 38 };
     const availableWidth = Math.max(1, cssWidth - padding.left - padding.right);
     const availableHeight = Math.max(1, cssHeight - padding.top - padding.bottom);
-    const scale = Math.min(availableWidth / project.width, availableHeight / project.depth);
+    const fitScale = Math.min(availableWidth / project.width, availableHeight / project.depth);
+    const scale = fitScale * viewZoom;
     const planWidth = project.width * scale;
     const planHeight = project.depth * scale;
     return {
       cssWidth,
       cssHeight,
       scale,
-      left: padding.left + (availableWidth - planWidth) / 2,
-      top: padding.top + (availableHeight - planHeight) / 2,
+      left: padding.left + (availableWidth - planWidth) / 2 + viewPanX,
+      top: padding.top + (availableHeight - planHeight) / 2 + viewPanY,
       planWidth,
       planHeight,
     };
@@ -420,11 +457,11 @@
       }
     }
 
-    drawNoiseZones(true);
+    if (project.showNoiseZones !== false) drawNoiseZones(true);
     drawHeatmap();
     drawObstacles();
     if (project.showGrid) drawGrid();
-    drawNoiseZones(false);
+    if (project.showNoiseZones !== false) drawNoiseZones(false);
     if (project.showBeams) drawBeams();
     drawSources();
     context.restore();
@@ -939,9 +976,11 @@
       const item = project.obstacles[index];
       if (planPoint.x >= item.x && planPoint.x <= item.x + item.width && planPoint.y >= item.y && planPoint.y <= item.y + item.depth) return { type: "obstacle", id: item.id, object: item };
     }
-    for (let index = project.noiseZones.length - 1; index >= 0; index -= 1) {
-      const item = project.noiseZones[index];
-      if (planPoint.x >= item.x && planPoint.x <= item.x + item.width && planPoint.y >= item.y && planPoint.y <= item.y + item.depth) return { type: "noise", id: item.id, object: item };
+    if (project.showNoiseZones !== false) {
+      for (let index = project.noiseZones.length - 1; index >= 0; index -= 1) {
+        const item = project.noiseZones[index];
+        if (planPoint.x >= item.x && planPoint.x <= item.x + item.width && planPoint.y >= item.y && planPoint.y <= item.y + item.depth) return { type: "noise", id: item.id, object: item };
+      }
     }
     return null;
   }
@@ -1101,6 +1140,7 @@
         project = imported;
         selected = null;
         setPlacementMode(null);
+        resetViewZoom();
         syncProjectControls();
         recalculate();
         renderObjectList();
@@ -1185,10 +1225,13 @@
       markChanged({ refreshInspector: false });
     });
     document.getElementById("gridToggle").addEventListener("click", () => toggleProjectFlag("showGrid", "gridToggle"));
+    document.getElementById("noiseToggle").addEventListener("click", () => toggleProjectFlag("showNoiseZones", "noiseToggle"));
     document.getElementById("beamToggle").addEventListener("click", () => toggleProjectFlag("showBeams", "beamToggle"));
     document.getElementById("labelToggle").addEventListener("click", () => toggleProjectFlag("showLabels", "labelToggle"));
+    document.getElementById("zoomOutButton").addEventListener("click", () => zoomView(viewZoom / 1.25));
+    document.getElementById("zoomInButton").addEventListener("click", () => zoomView(viewZoom * 1.25));
     document.getElementById("fitButton").addEventListener("click", () => {
-      scheduleCanvasRender();
+      resetViewZoom();
       showToast("Plan fitted to the available workspace.");
     });
 
@@ -1213,6 +1256,12 @@
           : "Enter a valid drawing scale and DPI.";
       });
     });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const position = pointerPosition(event);
+      zoomView(viewZoom * Math.exp(-event.deltaY * 0.0015), position);
+    }, { passive: false });
+
     canvas.addEventListener("pointerdown", (event) => {
       canvas.setPointerCapture(event.pointerId);
       const position = pointerPosition(event);
@@ -1351,6 +1400,7 @@
       project = Model.createProject(project.mode);
       selected = null;
       setPlacementMode(null);
+      resetViewZoom();
       confirmDialog.close();
       setMeasurementMode(false, { clear: true });
       syncProjectControls();

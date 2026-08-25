@@ -24,6 +24,7 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 - Connected-load and amplifier-headroom schedule by speaker loop.
 - Plan-image background, offline browser autosave, project JSON import/export, receiver-grid CSV export, and print-ready study output.
 - Drawing-scale calibration (1:50 through custom ratios), editable raster DPI, proportional geometry resizing, and a two-click verification ruler.
+- Noise-zone graphic visibility toggle plus pointer-centered wheel zoom and 50%-800% toolbar zoom controls.
 - Embedded source register, case benchmarks, assumptions, and issue-before-use warnings.
 
 ## Calculation boundary

@@ -770,6 +770,11 @@ input[type="range"] {
   background: var(--green-soft);
 }
 
+.icon-toggle.zoom-readout {
+  width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
 .canvas-card {
   position: relative;
   min-height: 0;

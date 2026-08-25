@@ -479,6 +479,7 @@
       amplifierHeadroom: 20,
       viewMode: "compliance",
       showGrid: true,
+      showNoiseZones: true,
       showLabels: true,
       showBeams: true,
       heatmapOpacity: 0.68,
