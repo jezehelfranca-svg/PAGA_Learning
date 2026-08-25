@@ -9,6 +9,7 @@
   const ROTATION_HANDLE_HIT_RADIUS = 9;
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 8;
+  const MAX_AUTO_SOURCES = 500;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -18,6 +19,7 @@
   const toast = document.getElementById("toast");
   const referencesDialog = document.getElementById("referencesDialog");
   const confirmDialog = document.getElementById("confirmDialog");
+  const autoPlaceDialog = document.getElementById("autoPlaceDialog");
 
   let project = loadProject();
   let grid = null;
@@ -36,6 +38,8 @@
   let viewZoom = 1;
   let viewPanX = 0;
   let viewPanY = 0;
+  let viewPanning = null;
+  let autoPlacementDrag = null;
 
   function loadProject() {
     try {
@@ -133,6 +137,8 @@
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
     document.getElementById("backgroundVisibleToggle").checked = project.backgroundVisible !== false;
+    document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
+    document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
@@ -464,6 +470,7 @@
     if (project.showNoiseZones !== false) drawNoiseZones(false);
     if (project.showBeams) drawBeams();
     drawSources();
+    drawAutoPlacementPreview();
     context.restore();
 
     context.save();
@@ -896,13 +903,148 @@
   function setPlacementMode(mode) {
     placementMode = placementMode === mode ? null : mode;
     if (mode && measurementMode) setMeasurementMode(false, { clear: false });
+    if (placementMode !== "autoArea") autoPlacementDrag = null;
     document.getElementById("placeSourceButton").classList.toggle("placing", placementMode === "source");
+    document.getElementById("autoPlaceButton").classList.toggle("placing", placementMode === "autoArea");
     document.getElementById("addNoiseZoneButton").classList.toggle("placing", placementMode === "noise");
     document.getElementById("addObstacleButton").classList.toggle("placing", placementMode === "obstacle");
     canvas.classList.toggle("placing", Boolean(placementMode));
     canvas.style.cursor = "";
-    const label = placementMode === "source" ? "Click the plan to place a sound source" : placementMode === "noise" ? "Click the plan to add a noise zone" : placementMode === "obstacle" ? "Click the plan to add an obstacle" : "Drag symbol to move · drag its round handle to rotate · hold Shift to snap 15°";
+    const label = placementMode === "source"
+      ? "Click the plan to place a sound source"
+      : placementMode === "autoArea"
+        ? "Drag a rectangle for automatic source placement"
+        : placementMode === "noise"
+          ? "Click the plan to add a noise zone"
+          : placementMode === "obstacle"
+            ? "Click the plan to add an obstacle"
+            : "Drag symbol to move | drag its round handle to rotate | hold Shift to snap 15 degrees | middle-drag to pan";
     document.getElementById("mapHint").textContent = label;
+    scheduleCanvasRender();
+  }
+
+  function autoPlacementRectangle(startPoint, endPoint) {
+    const startX = Model.clamp(startPoint.x, 0, project.width);
+    const startY = Model.clamp(startPoint.y, 0, project.depth);
+    const endX = Model.clamp(endPoint.x, 0, project.width);
+    const endY = Model.clamp(endPoint.y, 0, project.depth);
+    return {
+      x: Math.min(startX, endX),
+      y: Math.min(startY, endY),
+      width: Math.abs(endX - startX),
+      depth: Math.abs(endY - startY),
+    };
+  }
+
+  function calculateAutoPlacementGrid(rect, maximumSpacingX, maximumSpacingY) {
+    const columns = Math.max(1, Math.ceil(rect.width / maximumSpacingX));
+    const rows = Math.max(1, Math.ceil(rect.depth / maximumSpacingY));
+    const count = columns * rows;
+    const spacingX = rect.width / columns;
+    const spacingY = rect.depth / rows;
+    const points = [];
+    if (count <= MAX_AUTO_SOURCES) {
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+          points.push({
+            x: rect.x + (column + 0.5) * spacingX,
+            y: rect.y + (row + 0.5) * spacingY,
+          });
+        }
+      }
+    }
+    return { columns, rows, count, spacingX, spacingY, points };
+  }
+
+  function beginAutoPlacement() {
+    const spacingX = Number(document.getElementById("autoSpacingX").value);
+    const spacingY = Number(document.getElementById("autoSpacingY").value);
+    if (!Number.isFinite(spacingX) || spacingX < 0.5 || !Number.isFinite(spacingY) || spacingY < 0.5) {
+      showToast("Enter valid X and Y spacing of at least 0.5 m.");
+      return;
+    }
+    project.autoSpacingX = spacingX;
+    project.autoSpacingY = spacingY;
+    autoPlaceDialog.close();
+    setPlacementMode("autoArea");
+    debounceSave();
+  }
+
+  function finishAutoPlacement() {
+    if (!autoPlacementDrag) return;
+    const rect = autoPlacementRectangle(autoPlacementDrag.start, autoPlacementDrag.end);
+    if (rect.width < 0.5 || rect.depth < 0.5) {
+      autoPlacementDrag = null;
+      scheduleCanvasRender();
+      showToast("Draw a placement area at least 0.5 m wide and deep.");
+      return;
+    }
+    const gridLayout = calculateAutoPlacementGrid(rect, project.autoSpacingX, project.autoSpacingY);
+    if (gridLayout.count > MAX_AUTO_SOURCES) {
+      autoPlacementDrag = null;
+      scheduleCanvasRender();
+      showToast(`Layout needs ${gridLayout.count} sources. Increase spacing or draw a smaller area (maximum ${MAX_AUTO_SOURCES}).`);
+      return;
+    }
+    const key = document.getElementById("devicePresetSelect").value;
+    let lastSource = null;
+    gridLayout.points.forEach((point) => {
+      const sourceNumber = project.sources.length + 1;
+      lastSource = Model.instantiateDevice(key, {
+        name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
+        x: point.x,
+        y: point.y,
+        loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
+      });
+      project.sources.push(lastSource);
+    });
+    selected = lastSource ? { type: "source", id: lastSource.id } : selected;
+    autoPlacementDrag = null;
+    setPlacementMode(null);
+    markChanged();
+    showToast(`${gridLayout.count} sources placed in a ${gridLayout.columns} x ${gridLayout.rows} centered grid (actual spacing ${round(gridLayout.spacingX, 2)} x ${round(gridLayout.spacingY, 2)} m).`);
+  }
+
+  function drawAutoPlacementPreview() {
+    if (!autoPlacementDrag) return;
+    const rect = autoPlacementRectangle(autoPlacementDrag.start, autoPlacementDrag.end);
+    const gridLayout = calculateAutoPlacementGrid(
+      rect,
+      Math.max(0.5, Number(project.autoSpacingX) || 12),
+      Math.max(0.5, Number(project.autoSpacingY) || 12)
+    );
+    const topLeft = planToCanvas(rect.x, rect.y);
+    const width = rect.width * layout.scale;
+    const height = rect.depth * layout.scale;
+    context.save();
+    context.fillStyle = gridLayout.count > MAX_AUTO_SOURCES ? "rgba(190,72,72,0.13)" : "rgba(21,118,112,0.14)";
+    context.strokeStyle = gridLayout.count > MAX_AUTO_SOURCES ? "#b84650" : "#157670";
+    context.lineWidth = 2;
+    context.setLineDash([7, 5]);
+    context.fillRect(topLeft.x, topLeft.y, width, height);
+    context.strokeRect(topLeft.x, topLeft.y, width, height);
+    context.setLineDash([]);
+    if (gridLayout.count <= MAX_AUTO_SOURCES) {
+      context.fillStyle = "#0d5b58";
+      gridLayout.points.forEach((point) => {
+        const canvasPoint = planToCanvas(point.x, point.y);
+        context.beginPath();
+        context.arc(canvasPoint.x, canvasPoint.y, 3.5, 0, Math.PI * 2);
+        context.fill();
+      });
+    }
+    const label = gridLayout.count > MAX_AUTO_SOURCES
+      ? `${gridLayout.count} sources - exceeds ${MAX_AUTO_SOURCES} limit`
+      : `${gridLayout.columns} x ${gridLayout.rows} = ${gridLayout.count} sources`;
+    context.font = "600 12px Segoe UI, sans-serif";
+    const labelWidth = context.measureText(label).width + 16;
+    const labelX = topLeft.x + 6;
+    const labelY = Math.max(layout.top + 22, topLeft.y + 22);
+    context.fillStyle = gridLayout.count > MAX_AUTO_SOURCES ? "#8e323b" : "#0d5b58";
+    context.fillRect(labelX, labelY - 17, labelWidth, 22);
+    context.fillStyle = "#ffffff";
+    context.fillText(label, labelX + 8, labelY - 2);
+    context.restore();
   }
 
   function addAtPoint(type, point) {
@@ -1236,6 +1378,17 @@
     });
 
     document.getElementById("placeSourceButton").addEventListener("click", () => setPlacementMode("source"));
+    document.getElementById("autoPlaceButton").addEventListener("click", () => {
+      if (placementMode === "autoArea") {
+        setPlacementMode(null);
+        return;
+      }
+      if (placementMode) setPlacementMode(null);
+      document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
+      document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
+      autoPlaceDialog.showModal();
+    });
+    document.getElementById("startAutoPlaceButton").addEventListener("click", beginAutoPlacement);
     document.getElementById("addNoiseZoneButton").addEventListener("click", () => setPlacementMode("noise"));
     document.getElementById("addObstacleButton").addEventListener("click", () => setPlacementMode("obstacle"));
 
@@ -1263,9 +1416,23 @@
     }, { passive: false });
 
     canvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 && event.button !== 1) return;
       canvas.setPointerCapture(event.pointerId);
       const position = pointerPosition(event);
+      if (event.button === 1) {
+        event.preventDefault();
+        viewPanning = { startX: position.x, startY: position.y, panX: viewPanX, panY: viewPanY };
+        canvas.classList.add("panning");
+        canvas.style.cursor = "grabbing";
+        mapTooltip.hidden = true;
+        return;
+      }
       const planPoint = canvasToPlan(position.x, position.y);
+      if (placementMode === "autoArea") {
+        autoPlacementDrag = { start: planPoint, end: planPoint };
+        scheduleCanvasRender();
+        return;
+      }
       if (measurementMode) {
         if (!measurement?.start || measurement.complete) {
           measurement = { start: planPoint, end: planPoint, complete: false };
@@ -1292,6 +1459,17 @@
     });
     canvas.addEventListener("pointermove", (event) => {
       const position = pointerPosition(event);
+      if (viewPanning) {
+        viewPanX = viewPanning.panX + position.x - viewPanning.startX;
+        viewPanY = viewPanning.panY + position.y - viewPanning.startY;
+        scheduleCanvasRender();
+        return;
+      }
+      if (autoPlacementDrag) {
+        autoPlacementDrag.end = canvasToPlan(position.x, position.y);
+        scheduleCanvasRender();
+        return;
+      }
       if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y), event);
       if (dragging) return;
       if (measurementMode) {
@@ -1303,14 +1481,25 @@
           scheduleCanvasRender();
         }
         return;
-      }
-      else {
+      } else {
         const hit = placementMode ? null : hitTest(position);
         canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
         showMapTooltip(event, position);
       }
     });
-    canvas.addEventListener("pointerup", () => {
+    canvas.addEventListener("pointerup", (event) => {
+      if (viewPanning) {
+        viewPanning = null;
+        canvas.classList.remove("panning");
+        canvas.style.cursor = "";
+        return;
+      }
+      if (autoPlacementDrag) {
+        const position = pointerPosition(event);
+        autoPlacementDrag.end = canvasToPlan(position.x, position.y);
+        finishAutoPlacement();
+        return;
+      }
       if (dragging) {
         dragging = null;
         canvas.classList.remove("dragging");
@@ -1322,8 +1511,19 @@
     });
     canvas.addEventListener("pointercancel", () => {
       dragging = null;
+      viewPanning = null;
+      autoPlacementDrag = null;
       canvas.classList.remove("dragging");
       canvas.classList.remove("rotating");
+      canvas.classList.remove("panning");
+      canvas.style.cursor = "";
+      scheduleCanvasRender();
+    });
+    canvas.addEventListener("mousedown", (event) => {
+      if (event.button === 1) event.preventDefault();
+    });
+    canvas.addEventListener("auxclick", (event) => {
+      if (event.button === 1) event.preventDefault();
     });
     canvas.addEventListener("pointerleave", () => {
       if (!dragging) mapTooltip.hidden = true;
@@ -1353,6 +1553,10 @@
       const tag = document.activeElement && document.activeElement.tagName;
       const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
       if (event.key === "Escape") {
+        viewPanning = null;
+        autoPlacementDrag = null;
+        canvas.classList.remove("panning");
+        canvas.style.cursor = "";
         setPlacementMode(null);
         mapTooltip.hidden = true;
         setMeasurementMode(false, { clear: true });

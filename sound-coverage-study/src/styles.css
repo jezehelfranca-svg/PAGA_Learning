@@ -471,6 +471,11 @@ input[type="range"] {
   line-height: 1.45;
 }
 
+.auto-place-note {
+  margin-top: 14px;
+  font-size: 11px;
+}
+
 .source-note b {
   display: block;
   margin-bottom: 2px;
@@ -812,6 +817,10 @@ input[type="range"] {
 
 #coverageCanvas.dragging {
   cursor: grabbing;
+}
+
+#coverageCanvas.panning {
+  cursor: grabbing !important;
 }
 
 #coverageCanvas.rotating {

@@ -199,6 +199,7 @@
             <select id="devicePresetSelect"></select>
           </label>
           <button class="button tool primary" id="placeSourceButton" type="button"><span class="tool-symbol">⌁</span> Place source</button>
+          <button class="button tool" id="autoPlaceButton" type="button"><span class="tool-symbol">AP</span> Auto-place</button>
           <button class="button tool" id="addNoiseZoneButton" type="button"><span class="tool-symbol">N</span> Noise zone</button>
           <button class="button tool" id="addObstacleButton" type="button"><span class="tool-symbol">▰</span> Obstacle</button>
         </div>
@@ -351,6 +352,34 @@
         <strong>Before issue</strong>
         <p>Replace every “verify” device reference with an approved datasheet value and polar pattern, reconcile A/C weighting for siren exposure criteria, model real geometry in approved software, then confirm results through commissioning measurements.</p>
       </section>
+    </div>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="autoPlaceDialog" aria-labelledby="autoPlaceTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">Lighting-style layout</p>
+        <h2 id="autoPlaceTitle">Auto-place sources</h2>
+      </div>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Set the maximum center-to-center spacing, then drag a rectangular placement area on the plan.</p>
+      <div class="field-grid two">
+        <label class="field">
+          <span>Maximum X spacing (m)</span>
+          <input id="autoSpacingX" type="number" min="0.5" max="1000" step="0.5" value="12">
+        </label>
+        <label class="field">
+          <span>Maximum Y spacing (m)</span>
+          <input id="autoSpacingY" type="number" min="0.5" max="1000" step="0.5" value="12">
+        </label>
+      </div>
+      <p class="source-note auto-place-note">Sources are centered within equal cells. Actual spacing will not exceed the values above. Maximum: 500 sources per layout.</p>
+      <div class="dialog-actions">
+        <button class="button" type="button" data-close-dialog>Cancel</button>
+        <button class="button primary" id="startAutoPlaceButton" type="button">Draw placement area</button>
+      </div>
     </div>
   </dialog>
 
