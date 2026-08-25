@@ -485,6 +485,7 @@
       backgroundImage: "",
       backgroundName: "",
       backgroundOpacity: 0.35,
+      backgroundVisible: true,
       backgroundScaleDenominator: 200,
       backgroundDpi: 96,
       backgroundPixelWidth: 0,

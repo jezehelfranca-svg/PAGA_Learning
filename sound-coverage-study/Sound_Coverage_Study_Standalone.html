@@ -574,6 +574,9 @@ input[type="range"] {
   color: var(--ink-faint);
   font-size: 8px;
 }
+.calibration-visibility {
+  margin-top: 0;
+}
 
 .calibration-actions {
   display: grid;
@@ -1817,6 +1820,10 @@ kbd {
             <span>Plan calibration</span>
             <small id="backgroundPixelSize">Image size -</small>
           </div>
+          <label class="check-row calibration-visibility">
+            <input id="backgroundVisibleToggle" type="checkbox" checked>
+            <span>Show imported background</span>
+          </label>
           <div class="field-grid two">
             <label class="field">
               <span>Drawing scale <b>1 :</b></span>
@@ -2559,6 +2566,7 @@ kbd {
       backgroundImage: "",
       backgroundName: "",
       backgroundOpacity: 0.35,
+      backgroundVisible: true,
       backgroundScaleDenominator: 200,
       backgroundDpi: 96,
       backgroundPixelWidth: 0,
@@ -2773,6 +2781,7 @@ kbd {
     syncToggle("labelToggle", project.showLabels);
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
+    document.getElementById("backgroundVisibleToggle").checked = project.backgroundVisible !== false;
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
@@ -3059,10 +3068,12 @@ kbd {
     context.clip(new Path2D(`M${layout.left},${layout.top}h${layout.planWidth}v${layout.planHeight}h-${layout.planWidth}z`));
 
     if (backgroundImage) {
+      if (project.backgroundVisible !== false) {
       context.save();
       context.globalAlpha = Model.clamp(Number(project.backgroundOpacity), 0, 1);
       context.drawImage(backgroundImage, layout.left, layout.top, layout.planWidth, layout.planHeight);
       context.restore();
+      }
     }
 
     drawNoiseZones(true);
@@ -3843,6 +3854,11 @@ kbd {
 
     document.getElementById("applyCalibrationButton").addEventListener("click", applyDrawingScale);
     document.getElementById("measureButton").addEventListener("click", () => setMeasurementMode(!measurementMode));
+    document.getElementById("backgroundVisibleToggle").addEventListener("change", (event) => {
+      project.backgroundVisible = event.target.checked;
+      markChanged({ refreshInspector: false });
+      showToast(project.backgroundVisible ? "Plan background shown." : "Plan background hidden.");
+    });
     ["backgroundScaleDenominator", "backgroundDpi"].forEach((id) => {
       document.getElementById(id).addEventListener("input", () => {
         const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
@@ -3967,6 +3983,7 @@ kbd {
         project.backgroundImage = String(reader.result);
         project.backgroundName = file.name;
         project.backgroundOpacity = 0.35;
+        project.backgroundVisible = true;
         syncProjectControls();
         markChanged({ refreshInspector: false });
         showToast("Plan background loaded. Set study dimensions to calibrate its scale.");

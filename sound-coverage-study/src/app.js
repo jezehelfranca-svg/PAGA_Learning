@@ -125,6 +125,7 @@
     syncToggle("labelToggle", project.showLabels);
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
+    document.getElementById("backgroundVisibleToggle").checked = project.backgroundVisible !== false;
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
@@ -411,10 +412,12 @@
     context.clip(new Path2D(`M${layout.left},${layout.top}h${layout.planWidth}v${layout.planHeight}h-${layout.planWidth}z`));
 
     if (backgroundImage) {
+      if (project.backgroundVisible !== false) {
       context.save();
       context.globalAlpha = Model.clamp(Number(project.backgroundOpacity), 0, 1);
       context.drawImage(backgroundImage, layout.left, layout.top, layout.planWidth, layout.planHeight);
       context.restore();
+      }
     }
 
     drawNoiseZones(true);
@@ -1195,6 +1198,11 @@
 
     document.getElementById("applyCalibrationButton").addEventListener("click", applyDrawingScale);
     document.getElementById("measureButton").addEventListener("click", () => setMeasurementMode(!measurementMode));
+    document.getElementById("backgroundVisibleToggle").addEventListener("change", (event) => {
+      project.backgroundVisible = event.target.checked;
+      markChanged({ refreshInspector: false });
+      showToast(project.backgroundVisible ? "Plan background shown." : "Plan background hidden.");
+    });
     ["backgroundScaleDenominator", "backgroundDpi"].forEach((id) => {
       document.getElementById(id).addEventListener("input", () => {
         const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
@@ -1319,6 +1327,7 @@
         project.backgroundImage = String(reader.result);
         project.backgroundName = file.name;
         project.backgroundOpacity = 0.35;
+        project.backgroundVisible = true;
         syncProjectControls();
         markChanged({ refreshInspector: false });
         showToast("Plan background loaded. Set study dimensions to calibrate its scale.");
