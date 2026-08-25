@@ -5,6 +5,8 @@
   if (!Model) throw new Error("SoundCoverageModel failed to load.");
 
   const STORAGE_KEY = "paga-sound-coverage-study-v1";
+  const ROTATION_HANDLE_DISTANCE = 25;
+  const ROTATION_HANDLE_HIT_RADIUS = 9;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -217,6 +219,15 @@
     return {
       x: Model.clamp((x - layout.left) / layout.scale, 0, project.width),
       y: Model.clamp((y - layout.top) / layout.scale, 0, project.depth),
+    };
+  }
+
+  function rotationHandlePosition(source) {
+    const position = planToCanvas(source.x, source.y);
+    const angle = Model.degreesToRadians(source.azimuth);
+    return {
+      x: position.x + Math.cos(angle) * ROTATION_HANDLE_DISTANCE,
+      y: position.y + Math.sin(angle) * ROTATION_HANDLE_DISTANCE,
     };
   }
 
@@ -449,7 +460,24 @@
     context.save();
     for (const source of project.sources || []) {
       const position = planToCanvas(source.x, source.y);
+      const handle = rotationHandlePosition(source);
       const isSelected = selected && selected.type === "source" && selected.id === source.id;
+      context.save();
+      context.globalAlpha = source.enabled === false ? 0.42 : 1;
+      context.strokeStyle = isSelected ? "#0f6669" : "rgba(15,102,105,0.72)";
+      context.lineWidth = isSelected ? 2 : 1.4;
+      context.beginPath();
+      context.moveTo(position.x, position.y);
+      context.lineTo(handle.x, handle.y);
+      context.stroke();
+      context.beginPath();
+      context.arc(handle.x, handle.y, isSelected ? 5.5 : 4.5, 0, Math.PI * 2);
+      context.fillStyle = isSelected ? "#9ce0c1" : "rgba(255,255,255,0.94)";
+      context.fill();
+      context.strokeStyle = "#0f6669";
+      context.lineWidth = 1.5;
+      context.stroke();
+      context.restore();
       if (isSelected) {
         context.beginPath();
         context.arc(position.x, position.y, 13, 0, Math.PI * 2);
@@ -674,7 +702,8 @@
     document.getElementById("addNoiseZoneButton").classList.toggle("placing", placementMode === "noise");
     document.getElementById("addObstacleButton").classList.toggle("placing", placementMode === "obstacle");
     canvas.classList.toggle("placing", Boolean(placementMode));
-    const label = placementMode === "source" ? "Click the plan to place a sound source" : placementMode === "noise" ? "Click the plan to add a noise zone" : placementMode === "obstacle" ? "Click the plan to add an obstacle" : "Drag move source · Del remove · Esc cancel";
+    canvas.style.cursor = "";
+    const label = placementMode === "source" ? "Click the plan to place a sound source" : placementMode === "noise" ? "Click the plan to add a noise zone" : placementMode === "obstacle" ? "Click the plan to add an obstacle" : "Drag symbol to move · drag its round handle to rotate · hold Shift to snap 15°";
     document.getElementById("mapHint").textContent = label;
   }
 
@@ -736,6 +765,11 @@
   function hitTest(canvasPoint) {
     for (let index = project.sources.length - 1; index >= 0; index -= 1) {
       const source = project.sources[index];
+      const handle = rotationHandlePosition(source);
+      if (Math.hypot(canvasPoint.x - handle.x, canvasPoint.y - handle.y) <= ROTATION_HANDLE_HIT_RADIUS) return { type: "source", id: source.id, object: source, part: "rotation" };
+    }
+    for (let index = project.sources.length - 1; index >= 0; index -= 1) {
+      const source = project.sources[index];
       const position = planToCanvas(source.x, source.y);
       if (Math.hypot(canvasPoint.x - position.x, canvasPoint.y - position.y) <= 13) return { type: "source", id: source.id, object: source };
     }
@@ -757,16 +791,26 @@
     dragging = {
       type: hit.type,
       id: hit.id,
+      action: hit.part === "rotation" ? "rotate" : "move",
       offsetX: planPoint.x - object.x,
       offsetY: planPoint.y - object.y,
     };
-    canvas.classList.add("dragging");
+    canvas.style.cursor = "";
+    canvas.classList.add(hit.part === "rotation" ? "rotating" : "dragging");
   }
 
-  function moveDraggedObject(planPoint) {
+  function moveDraggedObject(planPoint, event) {
     if (!dragging) return;
     const object = getSelectedObject();
     if (!object) return;
+    if (dragging.action === "rotate") {
+      let angle = (Math.atan2(planPoint.y - object.y, planPoint.x - object.x) * 180) / Math.PI;
+      if (event && event.shiftKey) angle = Math.round(angle / 15) * 15;
+      object.azimuth = Model.normalizeAngle(angle);
+      project.updatedAt = new Date().toISOString();
+      recalculate();
+      return;
+    }
     const objectWidth = dragging.type === "source" ? 0 : object.width;
     const objectDepth = dragging.type === "source" ? 0 : object.depth;
     object.x = Model.clamp(planPoint.x - dragging.offsetX, 0, Math.max(0, project.width - objectWidth));
@@ -1008,13 +1052,18 @@
     });
     canvas.addEventListener("pointermove", (event) => {
       const position = pointerPosition(event);
-      if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y));
-      else showMapTooltip(event, position);
+      if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y), event);
+      else {
+        const hit = placementMode ? null : hitTest(position);
+        canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
+        showMapTooltip(event, position);
+      }
     });
     canvas.addEventListener("pointerup", () => {
       if (dragging) {
         dragging = null;
         canvas.classList.remove("dragging");
+        canvas.classList.remove("rotating");
         renderInspector();
         renderObjectList();
         debounceSave();
@@ -1023,6 +1072,7 @@
     canvas.addEventListener("pointercancel", () => {
       dragging = null;
       canvas.classList.remove("dragging");
+      canvas.classList.remove("rotating");
     });
     canvas.addEventListener("pointerleave", () => {
       if (!dragging) mapTooltip.hidden = true;

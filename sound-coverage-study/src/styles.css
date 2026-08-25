@@ -736,6 +736,10 @@ input[type="range"] {
   cursor: grabbing;
 }
 
+#coverageCanvas.rotating {
+  cursor: grabbing;
+}
+
 .map-axis-label {
   position: absolute;
   z-index: 4;

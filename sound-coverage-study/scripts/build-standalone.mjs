@@ -17,7 +17,7 @@ const output = html
     `<style>\n${css}\n</style>`,
   )
   .replace(
-    '  <script src="src/model.js"></script>\n  <script src="src/app.js"></script>',
+    /  <script src="src\/model\.js"><\/script>\r?\n  <script src="src\/app\.js"><\/script>/,
     `  <script>\n${model}\n${app}\n</script>`,
   )
   .replace(

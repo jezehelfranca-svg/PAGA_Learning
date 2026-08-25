@@ -18,7 +18,7 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 
 - PAGING, PA, and ESS acceptance presets traced to the three IFC studies.
 - Interactive receiver-plane heatmap for compliance, sound level, or signal-to-noise margin.
-- Drag-and-place sound sources with editable reference SPL, reference condition, tap power, height, azimuth, beamwidth, rear attenuation, and additional loss.
+- Drag-and-place sound sources with a direct rotation handle, live beam feedback, optional 15-degree Shift snapping, and editable acoustic inputs.
 - Rectangular ambient-noise zones and simplified line-of-sight obstacles.
 - Energetic summation of multiple sources.
 - Connected-load and amplifier-headroom schedule by speaker loop.
