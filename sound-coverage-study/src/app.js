@@ -139,10 +139,26 @@
     document.getElementById("backgroundVisibleToggle").checked = project.backgroundVisible !== false;
     document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
     document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
+    document.getElementById("autoPlacementMethod").value = project.autoPlacementMethod || "compliance";
+    document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
+    document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
+    document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
+    document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
+    updateAutoPlacementMethodUI();
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
 
+  function updateAutoPlacementMethodUI() {
+    const method = document.getElementById("autoPlacementMethod").value;
+    document.getElementById("autoComplianceFields").hidden = method !== "compliance";
+    document.getElementById("autoManualFields").hidden = method !== "manual";
+    const deviceKey = document.getElementById("devicePresetSelect").value;
+    const preset = Model.DEVICE_PRESETS[deviceKey] || Model.DEVICE_PRESETS.custom;
+    const baseTarget = Math.max(project.minimumLevel || 0, (project.ambientLevel || 0) + (project.requiredMargin || 0));
+    const designMargin = Number(document.getElementById("autoDesignMargin").value) || 0;
+    document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver at or above its local target plus ${round(designMargin, 1)} dB reserve${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
+  }
   function syncToggle(id, active) {
     const button = document.getElementById(id);
     button.classList.toggle("active", Boolean(active));
@@ -936,38 +952,81 @@
     };
   }
 
-  function calculateAutoPlacementGrid(rect, maximumSpacingX, maximumSpacingY) {
+  function calculateManualPlacementGrid(rect, maximumSpacingX, maximumSpacingY) {
     const columns = Math.max(1, Math.ceil(rect.width / maximumSpacingX));
     const rows = Math.max(1, Math.ceil(rect.depth / maximumSpacingY));
-    const count = columns * rows;
-    const spacingX = rect.width / columns;
-    const spacingY = rect.depth / rows;
-    const points = [];
-    if (count <= MAX_AUTO_SOURCES) {
-      for (let row = 0; row < rows; row += 1) {
-        for (let column = 0; column < columns; column += 1) {
-          points.push({
-            x: rect.x + (column + 0.5) * spacingX,
-            y: rect.y + (row + 0.5) * spacingY,
-          });
-        }
-      }
-    }
-    return { columns, rows, count, spacingX, spacingY, points };
+    return Model.createPlacementGrid(rect, columns, rows);
+  }
+
+  function readAutoPlacementOptions() {
+    return {
+      method: document.getElementById("autoPlacementMethod").value === "manual" ? "manual" : "compliance",
+      spacingX: Number(document.getElementById("autoSpacingX").value),
+      spacingY: Number(document.getElementById("autoSpacingY").value),
+      designMargin: Number(document.getElementById("autoDesignMargin").value),
+      baseAzimuth: Number(document.getElementById("autoBaseAzimuth").value),
+      alternateAzimuth: document.getElementById("autoAlternateAzimuth").checked,
+      includeExisting: document.getElementById("autoIncludeExisting").checked,
+      maxSources: MAX_AUTO_SOURCES,
+    };
   }
 
   function beginAutoPlacement() {
-    const spacingX = Number(document.getElementById("autoSpacingX").value);
-    const spacingY = Number(document.getElementById("autoSpacingY").value);
-    if (!Number.isFinite(spacingX) || spacingX < 0.5 || !Number.isFinite(spacingY) || spacingY < 0.5) {
+    const options = readAutoPlacementOptions();
+    if (options.method === "manual" && (!Number.isFinite(options.spacingX) || options.spacingX < 0.5 || !Number.isFinite(options.spacingY) || options.spacingY < 0.5)) {
       showToast("Enter valid X and Y spacing of at least 0.5 m.");
       return;
     }
-    project.autoSpacingX = spacingX;
-    project.autoSpacingY = spacingY;
+    if (options.method === "compliance" && (!Number.isFinite(options.designMargin) || options.designMargin < 0 || options.designMargin > 20 || !Number.isFinite(options.baseAzimuth))) {
+      showToast("Enter a design reserve from 0 to 20 dB and a valid base azimuth.");
+      return;
+    }
+    project.autoPlacementMethod = options.method;
+    project.autoSpacingX = options.spacingX;
+    project.autoSpacingY = options.spacingY;
+    project.autoDesignMargin = options.designMargin;
+    project.autoBaseAzimuth = Model.normalizeAngle(options.baseAzimuth);
+    project.autoAlternateAzimuth = options.alternateAzimuth;
+    project.autoIncludeExisting = options.includeExisting;
     autoPlaceDialog.close();
     setPlacementMode("autoArea");
     debounceSave();
+  }
+
+  function placeAutoPlacementGrid(gridLayout, deviceKey, options) {
+    let lastSource = null;
+    gridLayout.points.forEach((point) => {
+      const sourceNumber = project.sources.length + 1;
+      const alternate = options.alternateAzimuth && (point.row + point.column) % 2 === 1;
+      lastSource = Model.instantiateDevice(deviceKey, {
+        name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
+        x: point.x,
+        y: point.y,
+        azimuth: Model.normalizeAngle(options.baseAzimuth + (alternate ? 180 : 0)),
+        loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
+      });
+      project.sources.push(lastSource);
+    });
+    selected = lastSource ? { type: "source", id: lastSource.id } : selected;
+    markChanged();
+  }
+
+  function completeCompliancePlacement(rect, deviceKey, options) {
+    const result = Model.optimizePlacementGrid(project, deviceKey, rect, options);
+    if (result.status === "existing-compliant") {
+      setPlacementMode(null);
+      showToast(`The area already meets the active target plus ${round(options.designMargin, 1)} dB reserve at all ${result.sampleCount.toLocaleString()} verification points. No additional sources were required.`);
+      return;
+    }
+    if (result.status !== "calculated") {
+      setPlacementMode(null);
+      const best = result.assessment ? round(result.assessment.compliantPercent, 1) : "0.0";
+      showToast(`No fully compliant grid was found within ${MAX_AUTO_SOURCES} sources. Best sampled compliance was ${best}%. Review the device data, criteria, orientation, or obstacles.`);
+      return;
+    }
+    placeAutoPlacementGrid(result.layout, deviceKey, options);
+    setPlacementMode(null);
+    showToast(`${result.layout.count} sources placed from compliance: ${result.layout.columns} x ${result.layout.rows}, ${round(result.layout.spacingX, 2)} x ${round(result.layout.spacingY, 2)} m spacing, ${round(result.assessment.minimumReserve, 1)} dB minimum reserve across ${result.sampleCount.toLocaleString()} checks.`);
   }
 
   function finishAutoPlacement() {
@@ -979,52 +1038,60 @@
       showToast("Draw a placement area at least 0.5 m wide and deep.");
       return;
     }
-    const gridLayout = calculateAutoPlacementGrid(rect, project.autoSpacingX, project.autoSpacingY);
+    const options = {
+      method: project.autoPlacementMethod || "compliance",
+      spacingX: project.autoSpacingX || 12,
+      spacingY: project.autoSpacingY || 12,
+      designMargin: project.autoDesignMargin ?? 3,
+      baseAzimuth: project.autoBaseAzimuth ?? 0,
+      alternateAzimuth: project.autoAlternateAzimuth !== false,
+      includeExisting: project.autoIncludeExisting !== false,
+      maxSources: MAX_AUTO_SOURCES,
+    };
+    const deviceKey = document.getElementById("devicePresetSelect").value;
+    if (options.method === "compliance") {
+      autoPlacementDrag = null;
+      setPlacementMode(null);
+      document.getElementById("mapHint").textContent = "Calculating the sparsest compliant source grid...";
+      showToast("Checking candidate grids against the active acoustic criteria...");
+      window.setTimeout(() => completeCompliancePlacement(rect, deviceKey, options), 30);
+      return;
+    }
+    const gridLayout = calculateManualPlacementGrid(rect, options.spacingX, options.spacingY);
     if (gridLayout.count > MAX_AUTO_SOURCES) {
       autoPlacementDrag = null;
       scheduleCanvasRender();
       showToast(`Layout needs ${gridLayout.count} sources. Increase spacing or draw a smaller area (maximum ${MAX_AUTO_SOURCES}).`);
       return;
     }
-    const key = document.getElementById("devicePresetSelect").value;
-    let lastSource = null;
-    gridLayout.points.forEach((point) => {
-      const sourceNumber = project.sources.length + 1;
-      lastSource = Model.instantiateDevice(key, {
-        name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
-        x: point.x,
-        y: point.y,
-        loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
-      });
-      project.sources.push(lastSource);
-    });
-    selected = lastSource ? { type: "source", id: lastSource.id } : selected;
     autoPlacementDrag = null;
     setPlacementMode(null);
-    markChanged();
-    showToast(`${gridLayout.count} sources placed in a ${gridLayout.columns} x ${gridLayout.rows} centered grid (actual spacing ${round(gridLayout.spacingX, 2)} x ${round(gridLayout.spacingY, 2)} m).`);
+    placeAutoPlacementGrid(gridLayout, deviceKey, options);
+    showToast(`${gridLayout.count} manually spaced sources placed in a ${gridLayout.columns} x ${gridLayout.rows} centered grid (${round(gridLayout.spacingX, 2)} x ${round(gridLayout.spacingY, 2)} m).`);
   }
 
   function drawAutoPlacementPreview() {
     if (!autoPlacementDrag) return;
     const rect = autoPlacementRectangle(autoPlacementDrag.start, autoPlacementDrag.end);
-    const gridLayout = calculateAutoPlacementGrid(
+    const scientific = (project.autoPlacementMethod || "compliance") === "compliance";
+    const gridLayout = scientific ? null : calculateManualPlacementGrid(
       rect,
       Math.max(0.5, Number(project.autoSpacingX) || 12),
       Math.max(0.5, Number(project.autoSpacingY) || 12)
     );
+    const exceedsLimit = gridLayout && gridLayout.count > MAX_AUTO_SOURCES;
     const topLeft = planToCanvas(rect.x, rect.y);
     const width = rect.width * layout.scale;
     const height = rect.depth * layout.scale;
     context.save();
-    context.fillStyle = gridLayout.count > MAX_AUTO_SOURCES ? "rgba(190,72,72,0.13)" : "rgba(21,118,112,0.14)";
-    context.strokeStyle = gridLayout.count > MAX_AUTO_SOURCES ? "#b84650" : "#157670";
+    context.fillStyle = exceedsLimit ? "rgba(190,72,72,0.13)" : "rgba(21,118,112,0.14)";
+    context.strokeStyle = exceedsLimit ? "#b84650" : "#157670";
     context.lineWidth = 2;
     context.setLineDash([7, 5]);
     context.fillRect(topLeft.x, topLeft.y, width, height);
     context.strokeRect(topLeft.x, topLeft.y, width, height);
     context.setLineDash([]);
-    if (gridLayout.count <= MAX_AUTO_SOURCES) {
+    if (gridLayout && !exceedsLimit) {
       context.fillStyle = "#0d5b58";
       gridLayout.points.forEach((point) => {
         const canvasPoint = planToCanvas(point.x, point.y);
@@ -1033,20 +1100,21 @@
         context.fill();
       });
     }
-    const label = gridLayout.count > MAX_AUTO_SOURCES
-      ? `${gridLayout.count} sources - exceeds ${MAX_AUTO_SOURCES} limit`
-      : `${gridLayout.columns} x ${gridLayout.rows} = ${gridLayout.count} sources`;
+    const label = scientific
+      ? "Release to calculate compliant spacing"
+      : exceedsLimit
+        ? `${gridLayout.count} sources - exceeds ${MAX_AUTO_SOURCES} limit`
+        : `${gridLayout.columns} x ${gridLayout.rows} = ${gridLayout.count} sources`;
     context.font = "600 12px Segoe UI, sans-serif";
     const labelWidth = context.measureText(label).width + 16;
     const labelX = topLeft.x + 6;
     const labelY = Math.max(layout.top + 22, topLeft.y + 22);
-    context.fillStyle = gridLayout.count > MAX_AUTO_SOURCES ? "#8e323b" : "#0d5b58";
+    context.fillStyle = exceedsLimit ? "#8e323b" : "#0d5b58";
     context.fillRect(labelX, labelY - 17, labelWidth, 22);
     context.fillStyle = "#ffffff";
     context.fillText(label, labelX + 8, labelY - 2);
     context.restore();
   }
-
   function addAtPoint(type, point) {
     if (type === "source") {
       const key = document.getElementById("devicePresetSelect").value;
@@ -1384,10 +1452,19 @@
         return;
       }
       if (placementMode) setPlacementMode(null);
+      document.getElementById("autoPlacementMethod").value = project.autoPlacementMethod || "compliance";
       document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
       document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
+      document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
+      document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
+      document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
+      document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
+      updateAutoPlacementMethodUI();
       autoPlaceDialog.showModal();
     });
+    document.getElementById("autoPlacementMethod").addEventListener("change", updateAutoPlacementMethodUI);
+    document.getElementById("autoDesignMargin").addEventListener("input", updateAutoPlacementMethodUI);
+    document.getElementById("devicePresetSelect").addEventListener("change", updateAutoPlacementMethodUI);
     document.getElementById("startAutoPlaceButton").addEventListener("click", beginAutoPlacement);
     document.getElementById("addNoiseZoneButton").addEventListener("click", () => setPlacementMode("noise"));
     document.getElementById("addObstacleButton").addEventListener("click", () => setPlacementMode("obstacle"));

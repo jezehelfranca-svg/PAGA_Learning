@@ -7,6 +7,7 @@
 
   const EPSILON = 1e-9;
   const MAX_GRID_CELLS = 30000;
+  const MAX_AUTO_SAMPLES = 1600;
 
   const MODE_CRITERIA = Object.freeze({
     paging: {
@@ -342,6 +343,217 @@
     return { width, depth, spacing, requestedSpacing, columns, rows, cellWidth, cellDepth, points };
   }
 
+  function createPlacementGrid(rectangle, columns, rows) {
+    const x = finiteNumber(rectangle && rectangle.x, 0);
+    const y = finiteNumber(rectangle && rectangle.y, 0);
+    const width = Math.max(0, finiteNumber(rectangle && rectangle.width, 0));
+    const depth = Math.max(0, finiteNumber(rectangle && rectangle.depth, 0));
+    const safeColumns = Math.max(1, Math.floor(finiteNumber(columns, 1)));
+    const safeRows = Math.max(1, Math.floor(finiteNumber(rows, 1)));
+    const spacingX = width / safeColumns;
+    const spacingY = depth / safeRows;
+    const points = [];
+    for (let row = 0; row < safeRows; row += 1) {
+      for (let column = 0; column < safeColumns; column += 1) {
+        points.push({
+          x: x + (column + 0.5) * spacingX,
+          y: y + (row + 0.5) * spacingY,
+          row,
+          column,
+        });
+      }
+    }
+    return {
+      x,
+      y,
+      width,
+      depth,
+      columns: safeColumns,
+      rows: safeRows,
+      count: points.length,
+      spacingX,
+      spacingY,
+      points,
+    };
+  }
+
+  function createPlacementSamples(rectangle, requestedSpacing) {
+    const x = finiteNumber(rectangle && rectangle.x, 0);
+    const y = finiteNumber(rectangle && rectangle.y, 0);
+    const width = Math.max(0.5, finiteNumber(rectangle && rectangle.width, 0.5));
+    const depth = Math.max(0.5, finiteNumber(rectangle && rectangle.depth, 0.5));
+    const sampleFloor = Math.sqrt((width * depth) / MAX_AUTO_SAMPLES);
+    const spacing = Math.max(0.25, finiteNumber(requestedSpacing, 2), sampleFloor);
+    const columns = Math.max(1, Math.ceil(width / spacing));
+    const rows = Math.max(1, Math.ceil(depth / spacing));
+    const points = [];
+    for (let row = 0; row <= rows; row += 1) {
+      for (let column = 0; column <= columns; column += 1) {
+        points.push({
+          x: x + (column / columns) * width,
+          y: y + (row / rows) * depth,
+        });
+      }
+    }
+    return { spacing, columns, rows, points };
+  }
+
+  function createPlacementSources(deviceKey, placementGrid, options = {}) {
+    const baseAzimuth = normalizeAngle(finiteNumber(options.baseAzimuth, 0));
+    const alternateAzimuth = options.alternateAzimuth !== false;
+    return placementGrid.points.map((point, index) => {
+      const alternate = alternateAzimuth && (point.row + point.column) % 2 === 1;
+      return instantiateDevice(deviceKey, {
+        name: `AUTO-${String(index + 1).padStart(3, "0")}`,
+        x: point.x,
+        y: point.y,
+        azimuth: normalizeAngle(baseAzimuth + (alternate ? 180 : 0)),
+        loop: `AUTO-${Math.max(1, Math.ceil((index + 1) / 8))}`,
+      });
+    });
+  }
+
+  function assessPlacementGrid(project, deviceKey, rectangle, placementGrid, options = {}, sampleSet = null) {
+    const designMargin = clamp(finiteNumber(options.designMargin, 3), 0, 20);
+    const includeExisting = options.includeExisting !== false;
+    const existingSources = includeExisting && Array.isArray(project.sources) ? project.sources : [];
+    const proposedSources = createPlacementSources(deviceKey, placementGrid, options);
+    const assessmentProject = { ...project, sources: [...existingSources, ...proposedSources] };
+    const samples = sampleSet || createPlacementSamples(rectangle, project.gridSpacing);
+    const assessmentPoints = [...samples.points, ...placementGrid.points];
+    let compliant = 0;
+    let below = 0;
+    let over = 0;
+    let minimumReserve = Infinity;
+    let maximumLevel = -Infinity;
+    let worstPoint = null;
+    for (const point of assessmentPoints) {
+      const result = calculatePoint(assessmentProject, point.x, point.y);
+      const reserve = Number.isFinite(result.level) ? result.level - result.target : -Infinity;
+      const belowDesign = reserve < designMargin;
+      const overLimit = Boolean(project.enforceMaximum) && result.level > finiteNumber(project.maximumLevel, Infinity);
+      if (belowDesign) below += 1;
+      else if (overLimit) over += 1;
+      else compliant += 1;
+      if (reserve < minimumReserve) {
+        minimumReserve = reserve;
+        worstPoint = { ...result, reserve };
+      }
+      if (result.level > maximumLevel) maximumLevel = result.level;
+    }
+    const total = assessmentPoints.length;
+    return {
+      compliant: below === 0 && over === 0,
+      compliantCount: compliant,
+      compliantPercent: total ? (compliant / total) * 100 : 0,
+      belowCount: below,
+      overCount: over,
+      total,
+      minimumReserve,
+      maximumLevel,
+      worstPoint,
+      designMargin,
+      sampleSpacing: samples.spacing,
+      proposedSources,
+    };
+  }
+
+  function optimizePlacementGrid(project, deviceKey, rectangle, options = {}) {
+    const rect = {
+      x: finiteNumber(rectangle && rectangle.x, 0),
+      y: finiteNumber(rectangle && rectangle.y, 0),
+      width: Math.max(0, finiteNumber(rectangle && rectangle.width, 0)),
+      depth: Math.max(0, finiteNumber(rectangle && rectangle.depth, 0)),
+    };
+    const maxSources = Math.max(1, Math.floor(finiteNumber(options.maxSources, 500)));
+    const samples = createPlacementSamples(rect, options.sampleSpacing || project.gridSpacing);
+    const emptyGrid = { ...rect, columns: 0, rows: 0, count: 0, spacingX: 0, spacingY: 0, points: [] };
+    const existingAssessment = assessPlacementGrid(project, deviceKey, rect, emptyGrid, options, samples);
+    if (options.includeExisting !== false && existingAssessment.compliant) {
+      return {
+        status: "existing-compliant",
+        layout: emptyGrid,
+        assessment: existingAssessment,
+        sampleCount: existingAssessment.total,
+        testedLayouts: 0,
+      };
+    }
+
+    const cache = new Map();
+    let testedLayouts = 0;
+    let bestEffort = null;
+    function evaluateSpacing(nominalSpacing) {
+      const columns = Math.max(1, Math.ceil(rect.width / nominalSpacing));
+      const rows = Math.max(1, Math.ceil(rect.depth / nominalSpacing));
+      if (columns * rows > maxSources) return { limit: true, columns, rows };
+      const signature = `${columns}x${rows}`;
+      if (cache.has(signature)) return cache.get(signature);
+      const layout = createPlacementGrid(rect, columns, rows);
+      const assessment = assessPlacementGrid(project, deviceKey, rect, layout, options, samples);
+      const trial = { nominalSpacing, layout, assessment, limit: false };
+      cache.set(signature, trial);
+      testedLayouts += 1;
+      if (
+        !bestEffort ||
+        assessment.compliantPercent > bestEffort.assessment.compliantPercent ||
+        (assessment.compliantPercent === bestEffort.assessment.compliantPercent && layout.count < bestEffort.layout.count)
+      ) {
+        bestEffort = trial;
+      }
+      return trial;
+    }
+
+    const maximumSpacing = Math.max(rect.width, rect.depth, 0.5) * 1.01;
+    let nominalSpacing = maximumSpacing;
+    let previousFailSpacing = null;
+    let firstPass = null;
+    for (let step = 0; step < 70; step += 1) {
+      const trial = evaluateSpacing(nominalSpacing);
+      if (trial.limit) break;
+      if (trial.assessment.compliant) {
+        firstPass = trial;
+        break;
+      }
+      previousFailSpacing = nominalSpacing;
+      nominalSpacing *= 0.9;
+    }
+
+    if (!firstPass) {
+      return {
+        status: "no-solution",
+        layout: bestEffort ? bestEffort.layout : emptyGrid,
+        assessment: bestEffort ? bestEffort.assessment : existingAssessment,
+        sampleCount: bestEffort ? bestEffort.assessment.total : existingAssessment.total,
+        testedLayouts,
+        maxSources,
+      };
+    }
+
+    let best = firstPass;
+    if (previousFailSpacing != null) {
+      let passingSpacing = firstPass.nominalSpacing;
+      let failingSpacing = previousFailSpacing;
+      for (let step = 0; step < 14; step += 1) {
+        const midpoint = (passingSpacing + failingSpacing) / 2;
+        const trial = evaluateSpacing(midpoint);
+        if (!trial.limit && trial.assessment.compliant) {
+          best = trial;
+          passingSpacing = midpoint;
+        } else {
+          failingSpacing = midpoint;
+        }
+      }
+    }
+
+    return {
+      status: "calculated",
+      layout: best.layout,
+      assessment: best.assessment,
+      sampleCount: best.assessment.total,
+      testedLayouts,
+      maxSources,
+    };
+  }
   function summarizeGrid(grid, project) {
     const finite = grid.points.filter((point) => Number.isFinite(point.level));
     const total = grid.points.length;
@@ -479,6 +691,11 @@
       amplifierHeadroom: 20,
       autoSpacingX: 12,
       autoSpacingY: 12,
+      autoPlacementMethod: "compliance",
+      autoDesignMargin: 3,
+      autoBaseAzimuth: 0,
+      autoAlternateAzimuth: true,
+      autoIncludeExisting: true,
       viewMode: "compliance",
       showGrid: true,
       showNoiseZones: true,
@@ -539,6 +756,11 @@
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
       autoSpacingX: clamp(finiteNumber(input.autoSpacingX, fallback.autoSpacingX), 0.5, 1000),
       autoSpacingY: clamp(finiteNumber(input.autoSpacingY, fallback.autoSpacingY), 0.5, 1000),
+      autoPlacementMethod: input.autoPlacementMethod === "manual" ? "manual" : "compliance",
+      autoDesignMargin: clamp(finiteNumber(input.autoDesignMargin, fallback.autoDesignMargin), 0, 20),
+      autoBaseAzimuth: normalizeAngle(finiteNumber(input.autoBaseAzimuth, fallback.autoBaseAzimuth)),
+      autoAlternateAzimuth: input.autoAlternateAzimuth !== false,
+      autoIncludeExisting: input.autoIncludeExisting !== false,
       backgroundScaleDenominator: clamp(finiteNumber(input.backgroundScaleDenominator, fallback.backgroundScaleDenominator), 1, 1000000),
       backgroundDpi: clamp(finiteNumber(input.backgroundDpi, fallback.backgroundDpi), 10, 2400),
       backgroundPixelWidth: Math.max(0, finiteNumber(input.backgroundPixelWidth, fallback.backgroundPixelWidth)),
@@ -554,6 +776,7 @@
     MODE_CRITERIA,
     DEVICE_PRESETS,
     MAX_GRID_CELLS,
+    MAX_AUTO_SAMPLES,
     clamp,
     finiteNumber,
     makeId,
@@ -569,6 +792,11 @@
     targetForNoise,
     calculatePoint,
     calculateGrid,
+    createPlacementGrid,
+    createPlacementSamples,
+    createPlacementSources,
+    assessPlacementGrid,
+    optimizePlacementGrid,
     summarizeGrid,
     summarizeLoops,
     instantiateDevice,

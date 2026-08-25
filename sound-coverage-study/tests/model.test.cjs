@@ -101,4 +101,39 @@ test("grid compliance separates below-target, compliant, and over-limit cells", 
   assert.equal(summary.below + summary.compliant + summary.over + summary.empty, 16);
   assert.equal(summary.sourceCount, 1);
 });
+test("compliance optimizer returns a fully verified sparse grid", () => {
+  const project = simpleProject();
+  project.gridSpacing = 2;
+  project.ambientLevel = 60;
+  project.minimumLevel = 80;
+  project.requiredMargin = 10;
+  project.enforceMaximum = false;
+  const result = Model.optimizePlacementGrid(
+    project,
+    "custom",
+    { x: 0, y: 0, width: 20, depth: 20 },
+    { designMargin: 3, includeExisting: false, alternateAzimuth: false, maxSources: 50 },
+  );
+  assert.equal(result.status, "calculated");
+  assert.equal(result.assessment.compliant, true);
+  assert.equal(result.assessment.compliantPercent, 100);
+  assert.ok(result.layout.count >= 1 && result.layout.count <= 50);
+});
 
+test("compliance optimizer can recognize coverage from existing sources", () => {
+  const project = simpleProject();
+  project.ambientLevel = 50;
+  project.minimumLevel = 70;
+  project.requiredMargin = 10;
+  project.enforceMaximum = false;
+  project.sources = [source({ x: 10, y: 10, referenceSpl: 130 })];
+  const result = Model.optimizePlacementGrid(
+    project,
+    "custom",
+    { x: 0, y: 0, width: 20, depth: 20 },
+    { designMargin: 3, includeExisting: true, maxSources: 50 },
+  );
+  assert.equal(result.status, "existing-compliant");
+  assert.equal(result.layout.count, 0);
+  assert.equal(result.assessment.compliant, true);
+});

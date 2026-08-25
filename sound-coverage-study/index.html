@@ -364,8 +364,30 @@
       <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
     </div>
     <div class="modal-body">
-      <p>Set the maximum center-to-center spacing, then drag a rectangular placement area on the plan.</p>
-      <div class="field-grid two">
+      <p>Choose a compliance-calculated layout or retain manual spacing as an optional drafting mode, then draw the placement area.</p>
+      <label class="field">
+        <span>Placement basis</span>
+        <select id="autoPlacementMethod">
+          <option value="compliance">Calculate from study compliance (recommended)</option>
+          <option value="manual">Manual maximum spacing</option>
+        </select>
+      </label>
+      <div id="autoComplianceFields">
+        <div class="field-grid two auto-place-fields">
+          <label class="field">
+            <span>Design reserve above target (dB)</span>
+            <input id="autoDesignMargin" type="number" min="0" max="20" step="0.5" value="3">
+          </label>
+          <label class="field">
+            <span>Base azimuth (degrees)</span>
+            <input id="autoBaseAzimuth" type="number" min="0" max="359" step="1" value="0">
+          </label>
+        </div>
+        <label class="check-row auto-place-check"><input id="autoAlternateAzimuth" type="checkbox" checked> Alternate adjacent sources by 180 degrees</label>
+        <label class="check-row auto-place-check"><input id="autoIncludeExisting" type="checkbox" checked> Include active existing sources in the compliance calculation</label>
+        <p class="source-note auto-place-note" id="autoScientificSummary"></p>
+      </div>
+      <div class="field-grid two auto-place-fields" id="autoManualFields" hidden>
         <label class="field">
           <span>Maximum X spacing (m)</span>
           <input id="autoSpacingX" type="number" min="0.5" max="1000" step="0.5" value="12">
@@ -375,7 +397,7 @@
           <input id="autoSpacingY" type="number" min="0.5" max="1000" step="0.5" value="12">
         </label>
       </div>
-      <p class="source-note auto-place-note">Sources are centered within equal cells. Actual spacing will not exceed the values above. Maximum: 500 sources per layout.</p>
+      <p class="source-note auto-place-note"><b>Calculation boundary</b> Compliance mode uses the selected device profile, active target and noise zones, receiver height, directivity, losses, obstacles, and energetic summation. Results remain screening-grade where device data is marked Verify. Maximum: 500 sources.</p>
       <div class="dialog-actions">
         <button class="button" type="button" data-close-dialog>Cancel</button>
         <button class="button primary" id="startAutoPlaceButton" type="button">Draw placement area</button>
