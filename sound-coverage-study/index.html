@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c2527">
+  <meta name="description" content="Offline sound coverage screening study for paging, public address, and emergency siren systems.">
+  <title>Sound Coverage Study</title>
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#coverageCanvas">Skip to coverage map</a>
+
+  <header class="topbar">
+    <div class="brand-block" aria-label="Sound Coverage Study">
+      <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M9 29a15 15 0 0 1 0-10M15 34a22 22 0 0 1 0-20M22 39a29 29 0 0 1 0-30"/>
+        <circle cx="31" cy="24" r="5"/>
+        <path d="M36 16c5 4 5 12 0 16"/>
+      </svg>
+      <div>
+        <div class="eyebrow">PAGA engineering workspace</div>
+        <div class="brand-title">Sound Coverage Study</div>
+      </div>
+    </div>
+
+    <div class="status-cluster" aria-live="polite">
+      <span class="status-dot"></span>
+      <span id="saveStatus">Saved locally</span>
+      <span class="criteria-chip" id="modeChip">PAGING · dBA</span>
+    </div>
+
+    <nav class="header-actions" aria-label="Project actions">
+      <button class="button ghost" id="newProjectButton" type="button">New</button>
+      <button class="button ghost" id="importButton" type="button">Import</button>
+      <button class="button ghost" id="exportButton" type="button">Export</button>
+      <button class="button ghost" id="csvButton" type="button">Grid CSV</button>
+      <button class="button ghost" id="referencesButton" type="button">References</button>
+      <button class="button primary" id="printButton" type="button">Print study</button>
+    </nav>
+  </header>
+
+  <main class="app-shell">
+    <aside class="control-panel panel-scroll" aria-label="Study controls">
+      <section class="panel-section project-heading">
+        <div class="section-kicker">Project setup</div>
+        <label class="field full">
+          <span>Study title</span>
+          <input id="projectTitle" data-project-field="title" type="text" maxlength="120" autocomplete="off">
+        </label>
+        <div class="field-grid two">
+          <label class="field">
+            <span>Revision</span>
+            <input id="projectRevision" data-project-field="revision" type="text" maxlength="12" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Prepared by</span>
+            <input id="preparedBy" data-project-field="preparedBy" type="text" maxlength="80" autocomplete="off" placeholder="Optional">
+          </label>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-heading-row">
+          <div>
+            <div class="section-kicker">System</div>
+            <h2>Study basis</h2>
+          </div>
+          <button class="icon-button" id="criteriaInfoButton" type="button" aria-label="Open source criteria">i</button>
+        </div>
+        <div class="mode-switch" role="radiogroup" aria-label="System type">
+          <button class="mode-option active" type="button" data-mode="paging" role="radio" aria-checked="true"><span>IPPS</span><small>Paging</small></button>
+          <button class="mode-option" type="button" data-mode="publicAddress" role="radio" aria-checked="false"><span>PA</span><small>Public address</small></button>
+          <button class="mode-option" type="button" data-mode="siren" role="radio" aria-checked="false"><span>ESS</span><small>Emergency siren</small></button>
+        </div>
+        <div class="source-note" id="criteriaNote"></div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-kicker">Receiver plane</div>
+        <h2>Area & sampling</h2>
+        <div class="field-grid two">
+          <label class="field">
+            <span>Width <b>m</b></span>
+            <input data-project-field="width" type="number" min="1" max="10000" step="1">
+          </label>
+          <label class="field">
+            <span>Depth <b>m</b></span>
+            <input data-project-field="depth" type="number" min="1" max="10000" step="1">
+          </label>
+          <label class="field">
+            <span>Receiver height <b>m</b></span>
+            <input data-project-field="receiverHeight" type="number" min="0" max="1000" step="0.1">
+          </label>
+          <label class="field">
+            <span>Grid spacing <b>m</b></span>
+            <input data-project-field="gridSpacing" type="number" min="0.25" max="1000" step="0.25">
+          </label>
+        </div>
+        <label class="upload-control">
+          <input id="backgroundInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+          <span class="upload-icon">＋</span>
+          <span><b>Plan background</b><small id="backgroundName">PNG, JPG, WEBP or SVG</small></span>
+        </label>
+        <div class="inline-control" id="backgroundOpacityRow" hidden>
+          <label for="backgroundOpacity">Plan opacity</label>
+          <input id="backgroundOpacity" data-project-field="backgroundOpacity" type="range" min="0" max="1" step="0.05">
+          <button class="text-button danger" id="removeBackgroundButton" type="button">Remove</button>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-kicker">Acceptance</div>
+        <h2>Coverage criteria</h2>
+        <div class="field-grid two">
+          <label class="field">
+            <span>Ambient <b id="ambientUnit">dBA</b></span>
+            <input data-project-field="ambientLevel" type="number" min="0" max="180" step="0.5">
+          </label>
+          <label class="field">
+            <span>Required margin <b>dB</b></span>
+            <input data-project-field="requiredMargin" type="number" min="0" max="60" step="0.5">
+          </label>
+          <label class="field">
+            <span>Absolute minimum <b id="minimumUnit">dBA</b></span>
+            <input data-project-field="minimumLevel" type="number" min="0" max="180" step="0.5">
+          </label>
+          <label class="field">
+            <span>Assessment maximum <b id="maximumUnit">dBA</b></span>
+            <input data-project-field="maximumLevel" type="number" min="0" max="180" step="0.5">
+          </label>
+        </div>
+        <label class="check-row">
+          <input data-project-field="enforceMaximum" type="checkbox">
+          <span>Include maximum in compliance status</span>
+        </label>
+      </section>
+
+      <details class="panel-section disclosure">
+        <summary><span><span class="section-kicker">Advanced</span>Propagation model</span><span class="chevron">⌄</span></summary>
+        <div class="disclosure-body">
+          <div class="field-grid two">
+            <label class="field">
+              <span>Other losses <b>dB</b></span>
+              <input data-project-field="fixedLoss" type="number" min="0" max="100" step="0.5">
+            </label>
+            <label class="field">
+              <span>Air loss <b>dB/100m</b></span>
+              <input data-project-field="airLossPer100m" type="number" min="0" max="100" step="0.1">
+            </label>
+            <label class="field">
+              <span>Amp headroom <b>%</b></span>
+              <input data-project-field="amplifierHeadroom" type="number" min="0" max="500" step="5">
+            </label>
+            <label class="field">
+              <span>Heatmap opacity</span>
+              <input data-project-field="heatmapOpacity" type="range" min="0.1" max="1" step="0.05">
+            </label>
+          </div>
+          <p class="microcopy">The source studies permit a simplified 1 dB allowance for combined secondary attenuation. Obstacles below add explicit insertion loss.</p>
+        </div>
+      </details>
+    </aside>
+
+    <section class="workspace" aria-label="Interactive coverage map">
+      <div class="workspace-toolbar">
+        <div class="placement-tools">
+          <label class="compact-select">
+            <span>Device</span>
+            <select id="devicePresetSelect"></select>
+          </label>
+          <button class="button tool primary" id="placeSourceButton" type="button"><span class="tool-symbol">⌁</span> Place source</button>
+          <button class="button tool" id="addNoiseZoneButton" type="button"><span class="tool-symbol">N</span> Noise zone</button>
+          <button class="button tool" id="addObstacleButton" type="button"><span class="tool-symbol">▰</span> Obstacle</button>
+        </div>
+        <div class="view-tools">
+          <label class="compact-select">
+            <span>Layer</span>
+            <select id="viewModeSelect">
+              <option value="compliance">Compliance</option>
+              <option value="spl">Sound level</option>
+              <option value="margin">S/N margin</option>
+            </select>
+          </label>
+          <button class="icon-toggle active" id="gridToggle" type="button" aria-pressed="true" title="Show grid">#</button>
+          <button class="icon-toggle active" id="beamToggle" type="button" aria-pressed="true" title="Show source beams">◔</button>
+          <button class="icon-toggle active" id="labelToggle" type="button" aria-pressed="true" title="Show labels">Aa</button>
+          <button class="icon-toggle" id="fitButton" type="button" title="Fit plan">⌗</button>
+        </div>
+      </div>
+
+      <div class="canvas-card" id="canvasCard">
+        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Use Place source then click the map; drag a selected source to move it."></canvas>
+        <div class="map-axis-label x-axis" id="xAxisLabel">90 m</div>
+        <div class="map-axis-label y-axis" id="yAxisLabel">60 m</div>
+        <div class="map-tooltip" id="mapTooltip" role="status" hidden></div>
+        <div class="map-empty" id="mapEmpty" hidden>
+          <div class="empty-icon">⌁</div>
+          <strong>No active sound sources</strong>
+          <span>Choose a device and place it on the plan.</span>
+        </div>
+        <div class="map-legend" id="mapLegend"></div>
+        <div class="map-hint" id="mapHint"><kbd>Drag</kbd> move source · <kbd>Del</kbd> remove · <kbd>Esc</kbd> cancel</div>
+      </div>
+
+      <div class="metric-strip" aria-label="Study summary">
+        <article class="metric-card hero-metric">
+          <div class="metric-label">Compliant area</div>
+          <div class="metric-value"><span id="compliantPercent">0</span><small>%</small></div>
+          <div class="progress-track"><span id="complianceProgress"></span></div>
+          <div class="metric-sub" id="audibleSummary">0% meets the minimum target</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-label">Average SPL</div>
+          <div class="metric-value"><span id="averageSpl">—</span><small id="averageUnit">dBA</small></div>
+          <div class="metric-sub" id="splRange">Range —</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-label">Active sources</div>
+          <div class="metric-value"><span id="sourceCount">0</span><small>units</small></div>
+          <div class="metric-sub" id="connectedLoad">0 W connected</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-label">Over-limit area</div>
+          <div class="metric-value warning"><span id="overPercent">0</span><small>%</small></div>
+          <div class="metric-sub" id="gridResolution">— samples</div>
+        </article>
+      </div>
+    </section>
+
+    <aside class="inspector panel-scroll" aria-label="Object inspector">
+      <section class="panel-section inspector-head">
+        <div>
+          <div class="section-kicker">Selection</div>
+          <h2 id="inspectorTitle">Study objects</h2>
+        </div>
+        <span class="selection-type" id="selectionType">Overview</span>
+      </section>
+
+      <section class="panel-section" id="selectionInspector">
+        <div class="empty-selection">
+          <div class="empty-selection-icon">↖</div>
+          <strong>Select an object</strong>
+          <p>Click a sound source, noise zone, or obstacle to edit its engineering inputs.</p>
+        </div>
+      </section>
+
+      <section class="panel-section objects-section">
+        <div class="section-heading-row">
+          <div>
+            <div class="section-kicker">Schedule</div>
+            <h2>Study objects</h2>
+          </div>
+          <span class="object-count" id="objectCount">0</span>
+        </div>
+        <div class="object-list" id="objectList"></div>
+      </section>
+
+      <section class="panel-section">
+        <div class="section-kicker">Engineering notes</div>
+        <label class="field full">
+          <span class="sr-only">Engineering notes</span>
+          <textarea data-project-field="notes" rows="6" maxlength="2000"></textarea>
+        </label>
+      </section>
+    </aside>
+  </main>
+
+  <dialog class="modal" id="referencesDialog" aria-labelledby="referencesTitle">
+    <div class="modal-header">
+      <div>
+        <div class="section-kicker">Repository evidence</div>
+        <h2 id="referencesTitle">Criteria, benchmarks & model boundary</h2>
+      </div>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+    </div>
+    <div class="modal-body reference-layout">
+      <section class="method-callout">
+        <div class="method-icon">Σ</div>
+        <div>
+          <strong>Screening model, not a ray-tracing replacement</strong>
+          <p>The app applies source reference level, power adjustment, inverse-square divergence, an editable directional approximation, fixed/air losses, simplified obstacle insertion loss, and energetic summation. It does not reproduce EASE reflections, full manufacturer polar data, diffraction, reverberation, STI/RASTI, or octave-band propagation.</p>
+        </div>
+      </section>
+
+      <section>
+        <h3>Implemented calculation basis</h3>
+        <div class="formula-card">
+          <code>L<sub>p,i</sub> = L<sub>ref</sub> + 10 log₁₀(P/P<sub>ref</sub>) − 20 log₁₀(r/r<sub>ref</sub>) − D − A</code>
+          <code>L<sub>total</sub> = 10 log₁₀(Σ 10<sup>L<sub>p,i</sub>/10</sup>)</code>
+          <p>The 10 log power rule, 20 log distance rule, point-source divergence, 1.5 m receiver plane, and system-specific acceptance criteria come from the three IFC studies in this repository.</p>
+        </div>
+      </section>
+
+      <section>
+        <h3>Case benchmarks from the studies</h3>
+        <div class="benchmark-grid">
+          <article><span>In-plant paging</span><strong>80–84.32 dBA</strong><small>Reported average SPL by zone; ambient 52–63 dBA</small></article>
+          <article><span>Public address</span><strong>78.32 dBA</strong><small>Reported average; 48 dBA average ambient</small></article>
+          <article><span>Emergency siren</span><strong>99.32 dBC</strong><small>Reported average; 80 dBC average ambient</small></article>
+          <article><span>ESS source reference</span><strong>118 dBC @ 30 m</strong><small>1000 Hz study value for MOD8032B</small></article>
+        </div>
+      </section>
+
+      <section>
+        <h3>Source register</h3>
+        <div class="source-register">
+          <a href="../CE-040449-001_SOUND%20COVERAGE%20STUDY%20FOR%20IN-PLANT%20PAGING%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040449-001</b><span>In-Plant Paging IFC study · formulas §2.4–2.5, criteria §3.1, assumptions §3.2</span></a>
+          <a href="../CE-040450-001_SOUND%20COVERAGE%20STUDY%20FOR%20EMERGENCY%20SIREN%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040450-001</b><span>Emergency Siren IFC study · criteria, 15 m mounting, MOD8032B reference</span></a>
+          <a href="../CE-040451-001_SOUND%20COVERAGE%20STUDY%20FOR%20PUBLIC%20ADDRESS%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040451-001</b><span>Public Address IFC study · criteria, assumptions, study benchmark</span></a>
+          <a href="../Maintenance%20Building_PAGA.pdf"><b>Maintenance Building_PAGA.pdf</b><span>Equipment schedule: 25 W and 15 W horns, 6 W ceiling speakers; minimum 2.5 m mounting note</span></a>
+          <a href="../Substation%20PAGA.pdf"><b>Substation PAGA.pdf</b><span>Equipment schedule and installation notes for IPPS layouts</span></a>
+          <a href="../Block%20Diagram%20PAGA.pdf"><b>Block Diagram PAGA.pdf</b><span>PAGA/IPPS topology and speaker-loop context</span></a>
+          <a href="../Acoustic%20Study.pdf"><b>Acoustic Study.pdf</b><span>Preserved repository source; the stored bytes do not expose a valid PDF header and could not be parsed</span></a>
+        </div>
+      </section>
+
+      <section class="caution-box">
+        <strong>Before issue</strong>
+        <p>Replace every “verify” device reference with an approved datasheet value and polar pattern, reconcile A/C weighting for siren exposure criteria, model real geometry in approved software, then confirm results through commissioning measurements.</p>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="confirmDialog" aria-labelledby="confirmTitle">
+    <div class="modal-header">
+      <h2 id="confirmTitle">Start a new study?</h2>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p>Your current study is already saved in this browser, but a new example will replace the active workspace.</p>
+      <div class="dialog-actions">
+        <button class="button ghost" type="button" data-close-dialog>Cancel</button>
+        <button class="button primary" id="confirmNewButton" type="button">Create new example</button>
+      </div>
+    </div>
+  </dialog>
+
+  <input id="projectFileInput" type="file" accept="application/json,.json" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <section id="printReport" class="print-report" aria-hidden="true"></section>
+
+  <script src="src/model.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

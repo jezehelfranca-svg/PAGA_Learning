@@ -1,0 +1,12 @@
+{
+  "name": "paga-sound-coverage-study",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline sound-coverage screening study based on the engineering references in PAGA_Learning.",
+  "scripts": {
+    "build": "node scripts/build-standalone.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check src/model.js && node --check src/app.js && node --test tests/*.test.cjs && node scripts/build-standalone.mjs"
+  }
+}
+
