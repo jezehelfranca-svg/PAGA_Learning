@@ -533,6 +533,76 @@ input[type="range"] {
   gap: 8px;
   margin-top: 9px;
 }
+.calibration-card {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f8fbf9;
+}
+
+.calibration-card[hidden] {
+  display: none;
+}
+
+.calibration-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calibration-title span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.calibration-title small {
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.calibration-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.button.compact {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 9px;
+}
+
+.button.compact.measuring {
+  border-color: var(--amber);
+  color: #6b3a10;
+  background: var(--amber-soft);
+  box-shadow: 0 0 0 3px rgba(200, 121, 40, 0.12);
+}
+
+.calibration-summary,
+.measurement-readout {
+  padding: 7px 8px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: white;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.measurement-readout {
+  color: #6b3a10;
+  background: var(--amber-soft);
+  font-weight: 700;
+}
+
+#coverageCanvas.measuring {
+  cursor: crosshair;
+}
 
 .text-button {
   padding: 0;

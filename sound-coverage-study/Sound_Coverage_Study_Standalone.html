@@ -543,6 +543,76 @@ input[type="range"] {
   gap: 8px;
   margin-top: 9px;
 }
+.calibration-card {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f8fbf9;
+}
+
+.calibration-card[hidden] {
+  display: none;
+}
+
+.calibration-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calibration-title span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.calibration-title small {
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.calibration-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.button.compact {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 9px;
+}
+
+.button.compact.measuring {
+  border-color: var(--amber);
+  color: #6b3a10;
+  background: var(--amber-soft);
+  box-shadow: 0 0 0 3px rgba(200, 121, 40, 0.12);
+}
+
+.calibration-summary,
+.measurement-readout {
+  padding: 7px 8px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: white;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.measurement-readout {
+  color: #6b3a10;
+  background: var(--amber-soft);
+  font-weight: 700;
+}
+
+#coverageCanvas.measuring {
+  cursor: crosshair;
+}
 
 .text-button {
   padding: 0;
@@ -1742,6 +1812,31 @@ kbd {
           <input id="backgroundOpacity" data-project-field="backgroundOpacity" type="range" min="0" max="1" step="0.05">
           <button class="text-button danger" id="removeBackgroundButton" type="button">Remove</button>
         </div>
+        <div class="calibration-card" id="planCalibrationPanel" hidden>
+          <div class="calibration-title">
+            <span>Plan calibration</span>
+            <small id="backgroundPixelSize">Image size -</small>
+          </div>
+          <div class="field-grid two">
+            <label class="field">
+              <span>Drawing scale <b>1 :</b></span>
+              <input id="backgroundScaleDenominator" type="number" min="1" max="1000000" step="1" list="drawingScalePresets" value="200">
+              <datalist id="drawingScalePresets">
+                <option value="50"></option><option value="100"></option><option value="200"></option><option value="250"></option><option value="300"></option><option value="500"></option><option value="1000"></option>
+              </datalist>
+            </label>
+            <label class="field">
+              <span>Raster resolution <b>DPI</b></span>
+              <input id="backgroundDpi" type="number" min="10" max="2400" step="1" value="96">
+            </label>
+          </div>
+          <div class="calibration-actions">
+            <button class="button compact" id="applyCalibrationButton" type="button">Apply scale</button>
+            <button class="button ghost compact" id="measureButton" type="button" aria-pressed="false"><span class="tool-symbol"></span> Measure</button>
+          </div>
+          <div class="calibration-summary" id="calibrationSummary">Load a plan to calculate its real dimensions.</div>
+          <div class="measurement-readout" id="measurementReadout" hidden></div>
+        </div>
       </section>
 
       <section class="panel-section">
@@ -1825,7 +1920,7 @@ kbd {
       </div>
 
       <div class="canvas-card" id="canvasCard">
-        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Use Place source then click the map. Drag a source to move it, or drag its round handle to rotate it."></canvas>
+        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Use Place source then click the map. Drag a source to move it, drag its round handle to rotate it, or use Measure to check a plan distance."></canvas>
         <div class="map-axis-label x-axis" id="xAxisLabel">90 m</div>
         <div class="map-axis-label y-axis" id="yAxisLabel">60 m</div>
         <div class="map-tooltip" id="mapTooltip" role="status" hidden></div>
@@ -2464,6 +2559,10 @@ kbd {
       backgroundImage: "",
       backgroundName: "",
       backgroundOpacity: 0.35,
+      backgroundScaleDenominator: 200,
+      backgroundDpi: 96,
+      backgroundPixelWidth: 0,
+      backgroundPixelHeight: 0,
       sources: createExampleSources(mode, width, depth),
       noiseZones: [],
       obstacles: [],
@@ -2508,6 +2607,10 @@ kbd {
       fixedLoss: clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
+      backgroundScaleDenominator: clamp(finiteNumber(input.backgroundScaleDenominator, fallback.backgroundScaleDenominator), 1, 1000000),
+      backgroundDpi: clamp(finiteNumber(input.backgroundDpi, fallback.backgroundDpi), 10, 2400),
+      backgroundPixelWidth: Math.max(0, finiteNumber(input.backgroundPixelWidth, fallback.backgroundPixelWidth)),
+      backgroundPixelHeight: Math.max(0, finiteNumber(input.backgroundPixelHeight, fallback.backgroundPixelHeight)),
       sources: Array.isArray(input.sources) ? input.sources.map((source) => ({ ...instantiateDevice(source.presetKey || "custom"), ...source })) : fallback.sources,
       noiseZones: Array.isArray(input.noiseZones) ? input.noiseZones : [],
       obstacles: Array.isArray(input.obstacles) ? input.obstacles : [],
@@ -2574,6 +2677,8 @@ kbd {
   let renderFrame = 0;
   let saveTimer = 0;
   let toastTimer = 0;
+  let measurementMode = false;
+  let measurement = null;
 
   function loadProject() {
     try {
@@ -2668,6 +2773,7 @@ kbd {
     syncToggle("labelToggle", project.showLabels);
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
+    updatePlanCalibrationUI();
     loadBackgroundImage();
   }
 
@@ -2675,6 +2781,119 @@ kbd {
     const button = document.getElementById(id);
     button.classList.toggle("active", Boolean(active));
     button.setAttribute("aria-pressed", String(Boolean(active)));
+  }
+  function calibrationMetrics(scaleDenominator = project.backgroundScaleDenominator, dpi = project.backgroundDpi) {
+    const pixelWidth = backgroundImage?.naturalWidth || Number(project.backgroundPixelWidth) || 0;
+    const pixelHeight = backgroundImage?.naturalHeight || Number(project.backgroundPixelHeight) || 0;
+    const pixelsPerMetre = (Number(dpi) * 39.3700787) / Number(scaleDenominator);
+    return {
+      pixelWidth,
+      pixelHeight,
+      pixelsPerMetre,
+      width: pixelsPerMetre > 0 ? pixelWidth / pixelsPerMetre : 0,
+      depth: pixelsPerMetre > 0 ? pixelHeight / pixelsPerMetre : 0,
+    };
+  }
+
+  function updatePlanCalibrationUI() {
+    const panel = document.getElementById("planCalibrationPanel");
+    if (!panel) return;
+    panel.hidden = !project.backgroundImage;
+    document.getElementById("backgroundScaleDenominator").value = project.backgroundScaleDenominator || 200;
+    document.getElementById("backgroundDpi").value = project.backgroundDpi || 96;
+    const metrics = calibrationMetrics();
+    document.getElementById("backgroundPixelSize").textContent = metrics.pixelWidth
+      ? `${metrics.pixelWidth} x ${metrics.pixelHeight} px`
+      : "Image size -";
+    document.getElementById("calibrationSummary").innerHTML = metrics.pixelWidth
+      ? `At <b>1:${round(project.backgroundScaleDenominator, 0)}</b>, 1 m = <b>${round(metrics.pixelsPerMetre, 2)} px</b>. Applying gives <b>${round(metrics.width, 2)} x ${round(metrics.depth, 2)} m</b>.`
+      : "Reading image dimensions.";
+    updateMeasurementReadout();
+  }
+
+  function resizeStudyGeometry(newWidth, newDepth) {
+    const ratioX = newWidth / Math.max(project.width, 0.001);
+    const ratioY = newDepth / Math.max(project.depth, 0.001);
+    project.sources.forEach((item) => {
+      item.x *= ratioX;
+      item.y *= ratioY;
+    });
+    [...project.noiseZones, ...project.obstacles].forEach((item) => {
+      item.x *= ratioX;
+      item.y *= ratioY;
+      item.width *= ratioX;
+      item.depth *= ratioY;
+    });
+    project.width = Number(newWidth.toFixed(3));
+    project.depth = Number(newDepth.toFixed(3));
+  }
+
+  function applyDrawingScale() {
+    if (!project.backgroundImage) {
+      showToast("Load a plan background before applying a drawing scale.");
+      return;
+    }
+    const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
+    const dpi = Number(document.getElementById("backgroundDpi").value);
+    if (!Number.isFinite(scaleDenominator) || scaleDenominator <= 0 || !Number.isFinite(dpi) || dpi < 10) {
+      showToast("Enter a valid scale denominator and raster DPI.");
+      return;
+    }
+    const metrics = calibrationMetrics(scaleDenominator, dpi);
+    if (!metrics.pixelWidth) {
+      showToast("The image dimensions are still loading.");
+      return;
+    }
+    if (metrics.width < 1 || metrics.depth < 1 || metrics.width > 10000 || metrics.depth > 10000) {
+      showToast("This scale produces dimensions outside the supported 1-10,000 m range.");
+      return;
+    }
+    project.backgroundScaleDenominator = Model.clamp(scaleDenominator, 1, 1000000);
+    project.backgroundDpi = Model.clamp(dpi, 10, 2400);
+    resizeStudyGeometry(metrics.width, metrics.depth);
+    measurement = null;
+    markChanged({ syncControls: true });
+    showToast(`Scale 1:${round(scaleDenominator, 0)} applied ; ${round(metrics.pixelsPerMetre, 2)} px per metre.`);
+  }
+
+  function updateMeasurementReadout() {
+    const readout = document.getElementById("measurementReadout");
+    if (!readout) return;
+    if (!measurement?.start || !measurement?.end) {
+      readout.hidden = true;
+      return;
+    }
+    const distance = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
+    if (distance <= 0) {
+      readout.hidden = true;
+      return;
+    }
+    const denominator = Number(project.backgroundScaleDenominator) || 1;
+    const paperMillimetres = (distance * 1000) / denominator;
+    readout.hidden = false;
+    readout.textContent = `Measured ${round(distance, 2)} m ; ${round(paperMillimetres, 1)} mm on paper at 1:${round(denominator, 0)}`;
+  }
+
+  function setMeasurementMode(active, { clear = active } = {}) {
+    measurementMode = Boolean(active);
+    if (measurementMode) {
+      placementMode = null;
+      document.getElementById("placeSourceButton").classList.remove("placing");
+      document.getElementById("addNoiseZoneButton").classList.remove("placing");
+      document.getElementById("addObstacleButton").classList.remove("placing");
+      canvas.classList.remove("placing");
+    }
+    if (clear) measurement = null;
+    const button = document.getElementById("measureButton");
+    button.classList.toggle("measuring", measurementMode);
+    button.setAttribute("aria-pressed", String(measurementMode));
+    canvas.classList.toggle("measuring", measurementMode);
+    canvas.style.cursor = "";
+    document.getElementById("mapHint").textContent = measurementMode
+      ? "Measure ; click the first point"
+      : "Drag symbol to move ; drag its round handle to rotate ; hold Shift to snap 15 degrees";
+    updateMeasurementReadout();
+    scheduleCanvasRender();
   }
 
   function updateCriteriaDisplay() {
@@ -2726,6 +2945,11 @@ kbd {
     image.onload = () => {
       if (token !== backgroundLoadToken) return;
       backgroundImage = image;
+      const dimensionsChanged = project.backgroundPixelWidth !== image.naturalWidth || project.backgroundPixelHeight !== image.naturalHeight;
+      project.backgroundPixelWidth = image.naturalWidth;
+      project.backgroundPixelHeight = image.naturalHeight;
+      updatePlanCalibrationUI();
+      if (dimensionsChanged) debounceSave();
       scheduleCanvasRender();
     };
     image.onerror = () => {
@@ -2855,6 +3079,7 @@ kbd {
     context.lineWidth = 1.4;
     context.strokeRect(layout.left, layout.top, layout.planWidth, layout.planHeight);
     drawScaleBar();
+    drawMeasurement();
     context.restore();
     renderLegend();
   }
@@ -2927,6 +3152,41 @@ kbd {
     context.fillStyle = "rgba(13,55,56,0.78)";
     context.font = "700 9px Segoe UI, sans-serif";
     context.fillText(`${round(length, length % 1 ? 1 : 0)} m`, x, y - 7);
+  }
+  function drawMeasurement() {
+    if (!measurement?.start || !measurement?.end) return;
+    const start = planToCanvas(measurement.start.x, measurement.start.y);
+    const end = planToCanvas(measurement.end.x, measurement.end.y);
+    const distance = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
+    if (distance <= 0) return;
+    const label = `${round(distance, 2)} m`;
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    context.save();
+    context.strokeStyle = "#c87928";
+    context.fillStyle = "#c87928";
+    context.lineWidth = 2;
+    context.setLineDash([6, 4]);
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    context.setLineDash([]);
+    [start, end].forEach((point) => {
+      context.beginPath();
+      context.arc(point.x, point.y, 4, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "white";
+      context.lineWidth = 1.5;
+      context.stroke();
+    });
+    context.font = "800 10px Segoe UI, sans-serif";
+    const labelWidth = context.measureText(label).width;
+    context.fillStyle = "rgba(7,27,28,0.92)";
+    context.fillRect(midX - labelWidth / 2 - 6, midY - 22, labelWidth + 12, 18);
+    context.fillStyle = "white";
+    context.fillText(label, midX - labelWidth / 2, midY - 9);
+    context.restore();
   }
 
   function drawNoiseZones(fill) {
@@ -3243,6 +3503,7 @@ kbd {
 
   function setPlacementMode(mode) {
     placementMode = placementMode === mode ? null : mode;
+    if (mode && measurementMode) setMeasurementMode(false, { clear: false });
     document.getElementById("placeSourceButton").classList.toggle("placing", placementMode === "source");
     document.getElementById("addNoiseZoneButton").classList.toggle("placing", placementMode === "noise");
     document.getElementById("addObstacleButton").classList.toggle("placing", placementMode === "obstacle");
@@ -3580,10 +3841,35 @@ kbd {
     document.getElementById("addNoiseZoneButton").addEventListener("click", () => setPlacementMode("noise"));
     document.getElementById("addObstacleButton").addEventListener("click", () => setPlacementMode("obstacle"));
 
+    document.getElementById("applyCalibrationButton").addEventListener("click", applyDrawingScale);
+    document.getElementById("measureButton").addEventListener("click", () => setMeasurementMode(!measurementMode));
+    ["backgroundScaleDenominator", "backgroundDpi"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
+        const dpi = Number(document.getElementById("backgroundDpi").value);
+        const metrics = calibrationMetrics(scaleDenominator, dpi);
+        document.getElementById("calibrationSummary").innerHTML = Number.isFinite(metrics.pixelsPerMetre) && metrics.pixelWidth
+          ? `Preview <b>1:${round(scaleDenominator, 0)}</b> ; 1 m = <b>${round(metrics.pixelsPerMetre, 2)} px</b> ; <b>${round(metrics.width, 2)} x ${round(metrics.depth, 2)} m</b>. Click Apply scale to use it.`
+          : "Enter a valid drawing scale and DPI.";
+      });
+    });
     canvas.addEventListener("pointerdown", (event) => {
       canvas.setPointerCapture(event.pointerId);
       const position = pointerPosition(event);
       const planPoint = canvasToPlan(position.x, position.y);
+      if (measurementMode) {
+        if (!measurement?.start || measurement.complete) {
+          measurement = { start: planPoint, end: planPoint, complete: false };
+          document.getElementById("mapHint").textContent = "Measure: click the second point";
+        } else {
+          measurement.end = planPoint;
+          measurement.complete = true;
+          setMeasurementMode(false, { clear: false });
+          updateMeasurementReadout();
+        }
+        scheduleCanvasRender();
+        return;
+      }
       if (placementMode) {
         addAtPoint(placementMode, planPoint);
         return;
@@ -3598,6 +3884,17 @@ kbd {
     canvas.addEventListener("pointermove", (event) => {
       const position = pointerPosition(event);
       if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y), event);
+      if (dragging) return;
+      if (measurementMode) {
+        canvas.style.cursor = "crosshair";
+        mapTooltip.hidden = true;
+        if (measurement?.start && !measurement.complete) {
+          measurement.end = canvasToPlan(position.x, position.y);
+          updateMeasurementReadout();
+          scheduleCanvasRender();
+        }
+        return;
+      }
       else {
         const hit = placementMode ? null : hitTest(position);
         canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
@@ -3649,6 +3946,7 @@ kbd {
       if (event.key === "Escape") {
         setPlacementMode(null);
         mapTooltip.hidden = true;
+        setMeasurementMode(false, { clear: true });
       }
       if ((event.key === "Delete" || event.key === "Backspace") && selected && !editing) {
         event.preventDefault();
@@ -3679,6 +3977,10 @@ kbd {
       project.backgroundImage = "";
       project.backgroundName = "";
       syncProjectControls();
+      project.backgroundPixelWidth = 0;
+      project.backgroundPixelHeight = 0;
+      setMeasurementMode(false, { clear: true });
+      updatePlanCalibrationUI();
       markChanged({ refreshInspector: false });
       showToast("Plan background removed.");
     });
@@ -3689,6 +3991,7 @@ kbd {
       selected = null;
       setPlacementMode(null);
       confirmDialog.close();
+      setMeasurementMode(false, { clear: true });
       syncProjectControls();
       recalculate();
       renderObjectList();

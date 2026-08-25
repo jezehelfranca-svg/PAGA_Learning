@@ -29,6 +29,8 @@
   let renderFrame = 0;
   let saveTimer = 0;
   let toastTimer = 0;
+  let measurementMode = false;
+  let measurement = null;
 
   function loadProject() {
     try {
@@ -123,6 +125,7 @@
     syncToggle("labelToggle", project.showLabels);
     document.getElementById("backgroundOpacityRow").hidden = !project.backgroundImage;
     document.getElementById("backgroundName").textContent = project.backgroundName || "PNG, JPG, WEBP or SVG";
+    updatePlanCalibrationUI();
     loadBackgroundImage();
   }
 
@@ -130,6 +133,119 @@
     const button = document.getElementById(id);
     button.classList.toggle("active", Boolean(active));
     button.setAttribute("aria-pressed", String(Boolean(active)));
+  }
+  function calibrationMetrics(scaleDenominator = project.backgroundScaleDenominator, dpi = project.backgroundDpi) {
+    const pixelWidth = backgroundImage?.naturalWidth || Number(project.backgroundPixelWidth) || 0;
+    const pixelHeight = backgroundImage?.naturalHeight || Number(project.backgroundPixelHeight) || 0;
+    const pixelsPerMetre = (Number(dpi) * 39.3700787) / Number(scaleDenominator);
+    return {
+      pixelWidth,
+      pixelHeight,
+      pixelsPerMetre,
+      width: pixelsPerMetre > 0 ? pixelWidth / pixelsPerMetre : 0,
+      depth: pixelsPerMetre > 0 ? pixelHeight / pixelsPerMetre : 0,
+    };
+  }
+
+  function updatePlanCalibrationUI() {
+    const panel = document.getElementById("planCalibrationPanel");
+    if (!panel) return;
+    panel.hidden = !project.backgroundImage;
+    document.getElementById("backgroundScaleDenominator").value = project.backgroundScaleDenominator || 200;
+    document.getElementById("backgroundDpi").value = project.backgroundDpi || 96;
+    const metrics = calibrationMetrics();
+    document.getElementById("backgroundPixelSize").textContent = metrics.pixelWidth
+      ? `${metrics.pixelWidth} x ${metrics.pixelHeight} px`
+      : "Image size -";
+    document.getElementById("calibrationSummary").innerHTML = metrics.pixelWidth
+      ? `At <b>1:${round(project.backgroundScaleDenominator, 0)}</b>, 1 m = <b>${round(metrics.pixelsPerMetre, 2)} px</b>. Applying gives <b>${round(metrics.width, 2)} x ${round(metrics.depth, 2)} m</b>.`
+      : "Reading image dimensions.";
+    updateMeasurementReadout();
+  }
+
+  function resizeStudyGeometry(newWidth, newDepth) {
+    const ratioX = newWidth / Math.max(project.width, 0.001);
+    const ratioY = newDepth / Math.max(project.depth, 0.001);
+    project.sources.forEach((item) => {
+      item.x *= ratioX;
+      item.y *= ratioY;
+    });
+    [...project.noiseZones, ...project.obstacles].forEach((item) => {
+      item.x *= ratioX;
+      item.y *= ratioY;
+      item.width *= ratioX;
+      item.depth *= ratioY;
+    });
+    project.width = Number(newWidth.toFixed(3));
+    project.depth = Number(newDepth.toFixed(3));
+  }
+
+  function applyDrawingScale() {
+    if (!project.backgroundImage) {
+      showToast("Load a plan background before applying a drawing scale.");
+      return;
+    }
+    const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
+    const dpi = Number(document.getElementById("backgroundDpi").value);
+    if (!Number.isFinite(scaleDenominator) || scaleDenominator <= 0 || !Number.isFinite(dpi) || dpi < 10) {
+      showToast("Enter a valid scale denominator and raster DPI.");
+      return;
+    }
+    const metrics = calibrationMetrics(scaleDenominator, dpi);
+    if (!metrics.pixelWidth) {
+      showToast("The image dimensions are still loading.");
+      return;
+    }
+    if (metrics.width < 1 || metrics.depth < 1 || metrics.width > 10000 || metrics.depth > 10000) {
+      showToast("This scale produces dimensions outside the supported 1-10,000 m range.");
+      return;
+    }
+    project.backgroundScaleDenominator = Model.clamp(scaleDenominator, 1, 1000000);
+    project.backgroundDpi = Model.clamp(dpi, 10, 2400);
+    resizeStudyGeometry(metrics.width, metrics.depth);
+    measurement = null;
+    markChanged({ syncControls: true });
+    showToast(`Scale 1:${round(scaleDenominator, 0)} applied ; ${round(metrics.pixelsPerMetre, 2)} px per metre.`);
+  }
+
+  function updateMeasurementReadout() {
+    const readout = document.getElementById("measurementReadout");
+    if (!readout) return;
+    if (!measurement?.start || !measurement?.end) {
+      readout.hidden = true;
+      return;
+    }
+    const distance = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
+    if (distance <= 0) {
+      readout.hidden = true;
+      return;
+    }
+    const denominator = Number(project.backgroundScaleDenominator) || 1;
+    const paperMillimetres = (distance * 1000) / denominator;
+    readout.hidden = false;
+    readout.textContent = `Measured ${round(distance, 2)} m ; ${round(paperMillimetres, 1)} mm on paper at 1:${round(denominator, 0)}`;
+  }
+
+  function setMeasurementMode(active, { clear = active } = {}) {
+    measurementMode = Boolean(active);
+    if (measurementMode) {
+      placementMode = null;
+      document.getElementById("placeSourceButton").classList.remove("placing");
+      document.getElementById("addNoiseZoneButton").classList.remove("placing");
+      document.getElementById("addObstacleButton").classList.remove("placing");
+      canvas.classList.remove("placing");
+    }
+    if (clear) measurement = null;
+    const button = document.getElementById("measureButton");
+    button.classList.toggle("measuring", measurementMode);
+    button.setAttribute("aria-pressed", String(measurementMode));
+    canvas.classList.toggle("measuring", measurementMode);
+    canvas.style.cursor = "";
+    document.getElementById("mapHint").textContent = measurementMode
+      ? "Measure ; click the first point"
+      : "Drag symbol to move ; drag its round handle to rotate ; hold Shift to snap 15 degrees";
+    updateMeasurementReadout();
+    scheduleCanvasRender();
   }
 
   function updateCriteriaDisplay() {
@@ -181,6 +297,11 @@
     image.onload = () => {
       if (token !== backgroundLoadToken) return;
       backgroundImage = image;
+      const dimensionsChanged = project.backgroundPixelWidth !== image.naturalWidth || project.backgroundPixelHeight !== image.naturalHeight;
+      project.backgroundPixelWidth = image.naturalWidth;
+      project.backgroundPixelHeight = image.naturalHeight;
+      updatePlanCalibrationUI();
+      if (dimensionsChanged) debounceSave();
       scheduleCanvasRender();
     };
     image.onerror = () => {
@@ -310,6 +431,7 @@
     context.lineWidth = 1.4;
     context.strokeRect(layout.left, layout.top, layout.planWidth, layout.planHeight);
     drawScaleBar();
+    drawMeasurement();
     context.restore();
     renderLegend();
   }
@@ -382,6 +504,41 @@
     context.fillStyle = "rgba(13,55,56,0.78)";
     context.font = "700 9px Segoe UI, sans-serif";
     context.fillText(`${round(length, length % 1 ? 1 : 0)} m`, x, y - 7);
+  }
+  function drawMeasurement() {
+    if (!measurement?.start || !measurement?.end) return;
+    const start = planToCanvas(measurement.start.x, measurement.start.y);
+    const end = planToCanvas(measurement.end.x, measurement.end.y);
+    const distance = Math.hypot(measurement.end.x - measurement.start.x, measurement.end.y - measurement.start.y);
+    if (distance <= 0) return;
+    const label = `${round(distance, 2)} m`;
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    context.save();
+    context.strokeStyle = "#c87928";
+    context.fillStyle = "#c87928";
+    context.lineWidth = 2;
+    context.setLineDash([6, 4]);
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+    context.setLineDash([]);
+    [start, end].forEach((point) => {
+      context.beginPath();
+      context.arc(point.x, point.y, 4, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "white";
+      context.lineWidth = 1.5;
+      context.stroke();
+    });
+    context.font = "800 10px Segoe UI, sans-serif";
+    const labelWidth = context.measureText(label).width;
+    context.fillStyle = "rgba(7,27,28,0.92)";
+    context.fillRect(midX - labelWidth / 2 - 6, midY - 22, labelWidth + 12, 18);
+    context.fillStyle = "white";
+    context.fillText(label, midX - labelWidth / 2, midY - 9);
+    context.restore();
   }
 
   function drawNoiseZones(fill) {
@@ -698,6 +855,7 @@
 
   function setPlacementMode(mode) {
     placementMode = placementMode === mode ? null : mode;
+    if (mode && measurementMode) setMeasurementMode(false, { clear: false });
     document.getElementById("placeSourceButton").classList.toggle("placing", placementMode === "source");
     document.getElementById("addNoiseZoneButton").classList.toggle("placing", placementMode === "noise");
     document.getElementById("addObstacleButton").classList.toggle("placing", placementMode === "obstacle");
@@ -1035,10 +1193,35 @@
     document.getElementById("addNoiseZoneButton").addEventListener("click", () => setPlacementMode("noise"));
     document.getElementById("addObstacleButton").addEventListener("click", () => setPlacementMode("obstacle"));
 
+    document.getElementById("applyCalibrationButton").addEventListener("click", applyDrawingScale);
+    document.getElementById("measureButton").addEventListener("click", () => setMeasurementMode(!measurementMode));
+    ["backgroundScaleDenominator", "backgroundDpi"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        const scaleDenominator = Number(document.getElementById("backgroundScaleDenominator").value);
+        const dpi = Number(document.getElementById("backgroundDpi").value);
+        const metrics = calibrationMetrics(scaleDenominator, dpi);
+        document.getElementById("calibrationSummary").innerHTML = Number.isFinite(metrics.pixelsPerMetre) && metrics.pixelWidth
+          ? `Preview <b>1:${round(scaleDenominator, 0)}</b> ; 1 m = <b>${round(metrics.pixelsPerMetre, 2)} px</b> ; <b>${round(metrics.width, 2)} x ${round(metrics.depth, 2)} m</b>. Click Apply scale to use it.`
+          : "Enter a valid drawing scale and DPI.";
+      });
+    });
     canvas.addEventListener("pointerdown", (event) => {
       canvas.setPointerCapture(event.pointerId);
       const position = pointerPosition(event);
       const planPoint = canvasToPlan(position.x, position.y);
+      if (measurementMode) {
+        if (!measurement?.start || measurement.complete) {
+          measurement = { start: planPoint, end: planPoint, complete: false };
+          document.getElementById("mapHint").textContent = "Measure: click the second point";
+        } else {
+          measurement.end = planPoint;
+          measurement.complete = true;
+          setMeasurementMode(false, { clear: false });
+          updateMeasurementReadout();
+        }
+        scheduleCanvasRender();
+        return;
+      }
       if (placementMode) {
         addAtPoint(placementMode, planPoint);
         return;
@@ -1053,6 +1236,17 @@
     canvas.addEventListener("pointermove", (event) => {
       const position = pointerPosition(event);
       if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y), event);
+      if (dragging) return;
+      if (measurementMode) {
+        canvas.style.cursor = "crosshair";
+        mapTooltip.hidden = true;
+        if (measurement?.start && !measurement.complete) {
+          measurement.end = canvasToPlan(position.x, position.y);
+          updateMeasurementReadout();
+          scheduleCanvasRender();
+        }
+        return;
+      }
       else {
         const hit = placementMode ? null : hitTest(position);
         canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
@@ -1104,6 +1298,7 @@
       if (event.key === "Escape") {
         setPlacementMode(null);
         mapTooltip.hidden = true;
+        setMeasurementMode(false, { clear: true });
       }
       if ((event.key === "Delete" || event.key === "Backspace") && selected && !editing) {
         event.preventDefault();
@@ -1134,6 +1329,10 @@
       project.backgroundImage = "";
       project.backgroundName = "";
       syncProjectControls();
+      project.backgroundPixelWidth = 0;
+      project.backgroundPixelHeight = 0;
+      setMeasurementMode(false, { clear: true });
+      updatePlanCalibrationUI();
       markChanged({ refreshInspector: false });
       showToast("Plan background removed.");
     });
@@ -1144,6 +1343,7 @@
       selected = null;
       setPlacementMode(null);
       confirmDialog.close();
+      setMeasurementMode(false, { clear: true });
       syncProjectControls();
       recalculate();
       renderObjectList();

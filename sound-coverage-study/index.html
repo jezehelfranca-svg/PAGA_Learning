@@ -107,6 +107,31 @@
           <input id="backgroundOpacity" data-project-field="backgroundOpacity" type="range" min="0" max="1" step="0.05">
           <button class="text-button danger" id="removeBackgroundButton" type="button">Remove</button>
         </div>
+        <div class="calibration-card" id="planCalibrationPanel" hidden>
+          <div class="calibration-title">
+            <span>Plan calibration</span>
+            <small id="backgroundPixelSize">Image size -</small>
+          </div>
+          <div class="field-grid two">
+            <label class="field">
+              <span>Drawing scale <b>1 :</b></span>
+              <input id="backgroundScaleDenominator" type="number" min="1" max="1000000" step="1" list="drawingScalePresets" value="200">
+              <datalist id="drawingScalePresets">
+                <option value="50"></option><option value="100"></option><option value="200"></option><option value="250"></option><option value="300"></option><option value="500"></option><option value="1000"></option>
+              </datalist>
+            </label>
+            <label class="field">
+              <span>Raster resolution <b>DPI</b></span>
+              <input id="backgroundDpi" type="number" min="10" max="2400" step="1" value="96">
+            </label>
+          </div>
+          <div class="calibration-actions">
+            <button class="button compact" id="applyCalibrationButton" type="button">Apply scale</button>
+            <button class="button ghost compact" id="measureButton" type="button" aria-pressed="false"><span class="tool-symbol"></span> Measure</button>
+          </div>
+          <div class="calibration-summary" id="calibrationSummary">Load a plan to calculate its real dimensions.</div>
+          <div class="measurement-readout" id="measurementReadout" hidden></div>
+        </div>
       </section>
 
       <section class="panel-section">
@@ -190,7 +215,7 @@
       </div>
 
       <div class="canvas-card" id="canvasCard">
-        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Use Place source then click the map. Drag a source to move it, or drag its round handle to rotate it."></canvas>
+        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Use Place source then click the map. Drag a source to move it, drag its round handle to rotate it, or use Measure to check a plan distance."></canvas>
         <div class="map-axis-label x-axis" id="xAxisLabel">90 m</div>
         <div class="map-axis-label y-axis" id="yAxisLabel">60 m</div>
         <div class="map-tooltip" id="mapTooltip" role="status" hidden></div>
