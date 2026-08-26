@@ -21,7 +21,7 @@
       minimumLevel: 80,
       maximumLevel: 110,
       enforceMaximum: true,
-      fixedLoss: 1,
+      fixedLoss: 0,
       note: "Minimum 80 dBA and at least 10 dB above ambient; not greater than 110 dBA.",
       sourceRef: "CE-040449-001, sections 3.1-3.2 (document pages 8-9)",
     },
@@ -36,7 +36,7 @@
       minimumLevel: 0,
       maximumLevel: 110,
       enforceMaximum: true,
-      fixedLoss: 1,
+      fixedLoss: 0,
       note: "At least 10 dB above ambient; personnel locations should not exceed 110 dBA.",
       sourceRef: "CE-040451-001, sections 3.1-3.2 (document pages 7-8)",
     },
@@ -51,7 +51,7 @@
       minimumLevel: 0,
       maximumLevel: 105,
       enforceMaximum: false,
-      fixedLoss: 1,
+      fixedLoss: 0,
       note: "At least 15 dB above ambient. The source study states a 105 dBA personnel limit while mapping in dBC, so the maximum is not enforced until weightings are reconciled.",
       sourceRef: "CE-040450-001, sections 3.1-3.2 (document pages 7-8)",
     },
@@ -188,20 +188,30 @@
     return normalizeAngle(angle);
   }
 
-  function directivityLoss(source, x, y) {
-    const beamWidth = clamp(finiteNumber(source.beamWidth, 360), 1, 360);
-    const rear = Math.max(0, finiteNumber(source.rearAttenuation, 0));
-    if (beamWidth >= 359.9 || rear <= EPSILON) return 0;
-
-    const difference = smallestAngleDifference(source.azimuth, sourceBearing(source, x, y));
-    const edge = Math.max(0.5, beamWidth / 2);
-    if (difference <= edge) {
-      return Math.min(rear, 6 * (difference / edge) ** 2);
-    }
+  function beamPlaneLoss(difference, beamWidth, maximumLoss) {
+    const width = clamp(finiteNumber(beamWidth, 360), 1, 360);
+    const lossLimit = Math.max(0, finiteNumber(maximumLoss, 0));
+    if (width >= 359.9 || lossLimit <= EPSILON) return 0;
+    const angle = clamp(Math.abs(finiteNumber(difference, 0)), 0, 180);
+    const edge = Math.max(0.5, width / 2);
+    if (angle <= edge) return Math.min(lossLimit, 6 * (angle / edge) ** 2);
     const tailSpan = Math.max(0.5, 180 - edge);
-    return Math.min(rear, 6 + (rear - 6) * ((difference - edge) / tailSpan));
+    return Math.min(lossLimit, 6 + (lossLimit - 6) * ((angle - edge) / tailSpan));
   }
 
+  function directivityLoss(source, x, y, receiverHeight = finiteNumber(source.z, 0)) {
+    const rear = Math.max(0, finiteNumber(source.rearAttenuation, 0));
+    if (rear <= EPSILON) return 0;
+    const horizontalDifference = smallestAngleDifference(source.azimuth, sourceBearing(source, x, y));
+    const horizontalLoss = beamPlaneLoss(horizontalDifference, source.beamWidth, rear);
+    const dx = x - finiteNumber(source.x, 0);
+    const dy = y - finiteNumber(source.y, 0);
+    const horizontalDistance = Math.hypot(dx, dy);
+    const elevationAngle = (Math.atan2(receiverHeight - finiteNumber(source.z, 0), horizontalDistance) * 180) / Math.PI;
+    const verticalDifference = Math.abs(elevationAngle - clamp(finiteNumber(source.elevation, 0), -90, 90));
+    const verticalLoss = beamPlaneLoss(verticalDifference, source.verticalBeamWidth, rear);
+    return Math.min(rear, horizontalLoss + verticalLoss);
+  }
   function segmentRectangleInterval(x0, y0, x1, y1, rectangle) {
     const left = finiteNumber(rectangle.x, 0);
     const top = finiteNumber(rectangle.y, 0);
@@ -267,7 +277,7 @@
     const distance = Math.max(nearFieldDistance, geometricDistance);
     const powerAdjustment = 10 * Math.log10(power / referencePower);
     const distanceAdjustment = 20 * Math.log10(distance / referenceDistance);
-    const directionAdjustment = directivityLoss(source, x, y);
+    const directionAdjustment = directivityLoss(source, x, y, receiverHeight);
     const barriers = obstacleLoss(project, source, x, y);
     const atmospheric = Math.max(0, finiteNumber(project.airLossPer100m, 0)) * (distance / 100);
     const fixedLoss = Math.max(0, finiteNumber(project.fixedLoss, 0));
@@ -294,7 +304,7 @@
         y >= finiteNumber(zone.y, 0) &&
         x <= finiteNumber(zone.x, 0) + Math.max(0, finiteNumber(zone.width, 0)) &&
         y <= finiteNumber(zone.y, 0) + Math.max(0, finiteNumber(zone.depth, 0));
-      if (inside) ambient = finiteNumber(zone.level, ambient);
+      if (inside) ambient = Math.max(ambient, finiteNumber(zone.level, ambient));
     }
     return ambient;
   }
@@ -578,8 +588,8 @@
       compliantPercent: total ? (compliant / total) * 100 : 0,
       audiblePercent: total ? ((compliant + over) / total) * 100 : 0,
       overPercent: total ? (over / total) * 100 : 0,
-      minimum: levels.length ? Math.min(...levels) : -Infinity,
-      maximum: levels.length ? Math.max(...levels) : -Infinity,
+      minimum: levels.length ? levels.reduce((minimum, level) => Math.min(minimum, level), Infinity) : -Infinity,
+      maximum: levels.length ? levels.reduce((maximum, level) => Math.max(maximum, level), -Infinity) : -Infinity,
       energeticAverage: average,
       arithmeticAverage,
       sourceCount,
@@ -617,12 +627,14 @@
       y: 10,
       z: preset.sourceHeight,
       azimuth: 0,
+      elevation: 0,
       referenceSpl: preset.referenceSpl,
       referenceDistance: preset.referenceDistance,
       referencePower: preset.referencePower,
       tapPower: preset.tapPower,
       ratedPower: preset.ratedPower,
       beamWidth: preset.beamWidth,
+      verticalBeamWidth: preset.verticalBeamWidth || 360,
       rearAttenuation: preset.rearAttenuation,
       nearFieldDistance: preset.nearFieldDistance,
       additionalLoss: 0,
@@ -670,7 +682,7 @@
     const width = mode === "siren" ? 300 : 90;
     const depth = mode === "siren" ? 220 : 60;
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: makeId("study"),
       title: "Sound Coverage Study",
       revision: "A",
@@ -736,22 +748,105 @@
     };
   }
 
+  function safeText(value, fallback = "", maximumLength = 500) {
+    return (typeof value === "string" ? value : String(fallback ?? "")).slice(0, maximumLength);
+  }
+
+  function sanitizeSource(input, projectWidth, projectDepth) {
+    const value = input && typeof input === "object" ? input : {};
+    const presetKey = typeof value.presetKey === "string" && DEVICE_PRESETS[value.presetKey] ? value.presetKey : "custom";
+    const base = instantiateDevice(presetKey);
+    const weighting = ["A", "C", "Z"].includes(value.weighting) ? value.weighting : base.weighting;
+    return {
+      id: safeText(value.id, makeId("source"), 160) || makeId("source"),
+      presetKey: base.presetKey,
+      name: safeText(value.name, base.name, 200),
+      model: safeText(value.model, base.model, 200),
+      x: clamp(finiteNumber(value.x, base.x), 0, projectWidth),
+      y: clamp(finiteNumber(value.y, base.y), 0, projectDepth),
+      z: clamp(finiteNumber(value.z, base.z), 0, 1000),
+      azimuth: normalizeAngle(finiteNumber(value.azimuth, base.azimuth)),
+      elevation: clamp(finiteNumber(value.elevation, base.elevation), -90, 90),
+      referenceSpl: clamp(finiteNumber(value.referenceSpl, base.referenceSpl), 0, 180),
+      referenceDistance: clamp(finiteNumber(value.referenceDistance, base.referenceDistance), 0.01, 10000),
+      referencePower: clamp(finiteNumber(value.referencePower, base.referencePower), 0.000001, 1000000),
+      tapPower: clamp(finiteNumber(value.tapPower, base.tapPower), 0.000001, 1000000),
+      ratedPower: clamp(finiteNumber(value.ratedPower, base.ratedPower), 0.000001, 1000000),
+      beamWidth: clamp(finiteNumber(value.beamWidth, base.beamWidth), 1, 360),
+      verticalBeamWidth: clamp(finiteNumber(value.verticalBeamWidth, base.verticalBeamWidth), 1, 360),
+      rearAttenuation: clamp(finiteNumber(value.rearAttenuation, base.rearAttenuation), 0, 100),
+      nearFieldDistance: clamp(finiteNumber(value.nearFieldDistance, base.nearFieldDistance), 0.01, 10000),
+      additionalLoss: clamp(finiteNumber(value.additionalLoss, base.additionalLoss), 0, 100),
+      weighting,
+      confidence: base.confidence,
+      provenance: safeText(value.provenance, base.provenance, 2000),
+      loop: safeText(value.loop, base.loop, 120),
+      enabled: value.enabled !== false,
+    };
+  }
+
+  function sanitizeNoiseZone(input, projectWidth, projectDepth) {
+    const value = input && typeof input === "object" ? input : {};
+    const x = clamp(finiteNumber(value.x, 0), 0, Math.max(0, projectWidth - 0.1));
+    const y = clamp(finiteNumber(value.y, 0), 0, Math.max(0, projectDepth - 0.1));
+    return {
+      id: safeText(value.id, makeId("noise"), 160) || makeId("noise"),
+      name: safeText(value.name, "Noise zone", 200),
+      x,
+      y,
+      width: clamp(finiteNumber(value.width, 10), 0.1, Math.max(0.1, projectWidth - x)),
+      depth: clamp(finiteNumber(value.depth, 10), 0.1, Math.max(0.1, projectDepth - y)),
+      level: clamp(finiteNumber(value.level, 60), 0, 180),
+      enabled: value.enabled !== false,
+    };
+  }
+
+  function sanitizeObstacle(input, projectWidth, projectDepth) {
+    const value = input && typeof input === "object" ? input : {};
+    const x = clamp(finiteNumber(value.x, 0), 0, Math.max(0, projectWidth - 0.1));
+    const y = clamp(finiteNumber(value.y, 0), 0, Math.max(0, projectDepth - 0.1));
+    return {
+      id: safeText(value.id, makeId("obstacle"), 160) || makeId("obstacle"),
+      name: safeText(value.name, "Obstacle", 200),
+      x,
+      y,
+      width: clamp(finiteNumber(value.width, 10), 0.1, Math.max(0.1, projectWidth - x)),
+      depth: clamp(finiteNumber(value.depth, 10), 0.1, Math.max(0.1, projectDepth - y)),
+      height: clamp(finiteNumber(value.height, 6), 0, 1000),
+      loss: clamp(finiteNumber(value.loss, 10), 0, 100),
+      enabled: value.enabled !== false,
+    };
+  }
+
   function sanitizeProject(input) {
-    const fallback = createProject(input && MODE_CRITERIA[input.mode] ? input.mode : "paging");
+    const mode = input && MODE_CRITERIA[input.mode] ? input.mode : "paging";
+    const fallback = createProject(mode);
     if (!input || typeof input !== "object") return fallback;
+    const width = clamp(finiteNumber(input.width, fallback.width), 1, 10000);
+    const depth = clamp(finiteNumber(input.depth, fallback.depth), 1, 10000);
+    const inputSchema = Math.floor(finiteNumber(input.schemaVersion, 1));
+    const legacyDefaultLoss = inputSchema < 2 && finiteNumber(input.fixedLoss, 1) === 1;
+    const weighting = ["A", "C", "Z"].includes(input.weighting) ? input.weighting : fallback.weighting;
+    const viewMode = ["compliance", "level", "margin"].includes(input.viewMode) ? input.viewMode : fallback.viewMode;
     return {
       ...fallback,
-      ...input,
-      schemaVersion: 1,
-      width: clamp(finiteNumber(input.width, fallback.width), 1, 10000),
-      depth: clamp(finiteNumber(input.depth, fallback.depth), 1, 10000),
+      schemaVersion: 2,
+      id: safeText(input.id, fallback.id, 160) || fallback.id,
+      title: safeText(input.title, fallback.title, 300),
+      revision: safeText(input.revision, fallback.revision, 80),
+      preparedBy: safeText(input.preparedBy, fallback.preparedBy, 200),
+      mode,
+      weighting,
+      width,
+      depth,
       gridSpacing: clamp(finiteNumber(input.gridSpacing, fallback.gridSpacing), 0.25, 1000),
       receiverHeight: clamp(finiteNumber(input.receiverHeight, fallback.receiverHeight), 0, 1000),
       ambientLevel: clamp(finiteNumber(input.ambientLevel, fallback.ambientLevel), 0, 180),
       requiredMargin: clamp(finiteNumber(input.requiredMargin, fallback.requiredMargin), 0, 60),
       minimumLevel: clamp(finiteNumber(input.minimumLevel, fallback.minimumLevel), 0, 180),
       maximumLevel: clamp(finiteNumber(input.maximumLevel, fallback.maximumLevel), 0, 180),
-      fixedLoss: clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
+      enforceMaximum: input.enforceMaximum == null ? fallback.enforceMaximum : Boolean(input.enforceMaximum),
+      fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
       autoSpacingX: clamp(finiteNumber(input.autoSpacingX, fallback.autoSpacingX), 0.5, 1000),
@@ -761,17 +856,34 @@
       autoBaseAzimuth: normalizeAngle(finiteNumber(input.autoBaseAzimuth, fallback.autoBaseAzimuth)),
       autoAlternateAzimuth: input.autoAlternateAzimuth !== false,
       autoIncludeExisting: input.autoIncludeExisting !== false,
+      viewMode,
+      showGrid: input.showGrid !== false,
+      showNoiseZones: input.showNoiseZones !== false,
+      showLabels: input.showLabels !== false,
+      showBeams: input.showBeams !== false,
+      heatmapOpacity: clamp(finiteNumber(input.heatmapOpacity, fallback.heatmapOpacity), 0.1, 1),
+      backgroundImage: safeText(input.backgroundImage, "", 12000000),
+      backgroundName: safeText(input.backgroundName, "", 260),
+      backgroundOpacity: clamp(finiteNumber(input.backgroundOpacity, fallback.backgroundOpacity), 0, 1),
+      backgroundVisible: input.backgroundVisible !== false,
       backgroundScaleDenominator: clamp(finiteNumber(input.backgroundScaleDenominator, fallback.backgroundScaleDenominator), 1, 1000000),
       backgroundDpi: clamp(finiteNumber(input.backgroundDpi, fallback.backgroundDpi), 10, 2400),
-      backgroundPixelWidth: Math.max(0, finiteNumber(input.backgroundPixelWidth, fallback.backgroundPixelWidth)),
-      backgroundPixelHeight: Math.max(0, finiteNumber(input.backgroundPixelHeight, fallback.backgroundPixelHeight)),
-      sources: Array.isArray(input.sources) ? input.sources.map((source) => ({ ...instantiateDevice(source.presetKey || "custom"), ...source })) : fallback.sources,
-      noiseZones: Array.isArray(input.noiseZones) ? input.noiseZones : [],
-      obstacles: Array.isArray(input.obstacles) ? input.obstacles : [],
+      backgroundPixelWidth: clamp(finiteNumber(input.backgroundPixelWidth, fallback.backgroundPixelWidth), 0, 100000),
+      backgroundPixelHeight: clamp(finiteNumber(input.backgroundPixelHeight, fallback.backgroundPixelHeight), 0, 100000),
+      sources: Array.isArray(input.sources)
+        ? input.sources.filter((item) => item && typeof item === "object").slice(0, 2000).map((item) => sanitizeSource(item, width, depth))
+        : fallback.sources,
+      noiseZones: Array.isArray(input.noiseZones)
+        ? input.noiseZones.filter((item) => item && typeof item === "object").slice(0, 1000).map((item) => sanitizeNoiseZone(item, width, depth))
+        : fallback.noiseZones,
+      obstacles: Array.isArray(input.obstacles)
+        ? input.obstacles.filter((item) => item && typeof item === "object").slice(0, 1000).map((item) => sanitizeObstacle(item, width, depth))
+        : fallback.obstacles,
+      notes: safeText(input.notes, fallback.notes, 10000),
+      createdAt: safeText(input.createdAt, fallback.createdAt, 80),
       updatedAt: new Date().toISOString(),
     };
   }
-
   return Object.freeze({
     MODE_CRITERIA,
     DEVICE_PRESETS,
@@ -784,6 +896,7 @@
     normalizeAngle,
     smallestAngleDifference,
     energeticSum,
+    beamPlaneLoss,
     directivityLoss,
     segmentRectangleInterval,
     obstacleLoss,

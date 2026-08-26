@@ -821,6 +821,7 @@
           ${numberField("Y", "y", source.y, { min: 0, max: project.depth, step: 0.1, unit: "m" })}
           ${numberField("Height", "z", source.z, { min: 0, max: 1000, step: 0.1, unit: "m" })}
           ${numberField("Azimuth", "azimuth", source.azimuth, { min: 0, max: 360, step: 1, unit: "°" })}
+          ${numberField("Elevation aim", "elevation", source.elevation ?? 0, { min: -90, max: 90, step: 1, unit: "°" })}
         </div>
         <div class="section-kicker">Reference condition</div>
         <div class="field-grid two">
@@ -833,11 +834,13 @@
         </div>
         <div class="section-kicker">Direction & losses</div>
         <div class="field-grid two">
-          ${numberField("Beam width", "beamWidth", source.beamWidth, { min: 1, max: 360, step: 1, unit: "°" })}
+          ${numberField("Horizontal beam width", "beamWidth", source.beamWidth, { min: 1, max: 360, step: 1, unit: "°" })}
+          ${numberField("Vertical beam width", "verticalBeamWidth", source.verticalBeamWidth ?? 360, { min: 1, max: 360, step: 1, unit: "°" })}
           ${numberField("Rear attenuation", "rearAttenuation", source.rearAttenuation, { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${numberField("Additional loss", "additionalLoss", source.additionalLoss, { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${textField("Speaker loop", "loop", source.loop)}
         </div>
+        <p class="microcopy">Horizontal and vertical beam widths use the −6 dB convention. A 360° value means no attenuation is modeled in that plane.</p>
         ${enabledField(source.enabled)}
         <div class="provenance-note ${badgeClass}">${weightingMismatch ? `<b>Weighting mismatch:</b> source is dB${escapeHtml(source.weighting)}, study is ${escapeHtml(decibelUnit())}. ` : ""}${escapeHtml(source.provenance || "No provenance note supplied.")}</div>
         <div class="inspector-actions">
@@ -858,7 +861,7 @@
           ${numberField("Depth", "depth", zone.depth, { min: 0.1, max: project.depth, step: 0.1, unit: "m" })}
           ${numberField("Ambient level", "level", zone.level, { min: 0, max: 180, step: 0.5, unit: decibelUnit() })}
         </div>
-        <div class="provenance-note sourced">Zones override the project ambient level inside their rectangle. When zones overlap, the last zone in the project schedule controls.</div>
+        <div class="provenance-note sourced">Zones override the project ambient level inside their rectangle. When zones overlap, the highest active level controls conservatively.</div>
         ${enabledField(zone.enabled)}
         <div class="inspector-actions">
           <button class="button" type="button" data-object-action="duplicate">Duplicate</button>
@@ -1392,7 +1395,7 @@
         <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Absolute minimum</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
         <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
-      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="8">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, approximate horizontal directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. Not a substitute for approved octave-band ray tracing, manufacturer polar data, intelligibility analysis, or field verification.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
+      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="8">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
   }
 
   function bindEvents() {

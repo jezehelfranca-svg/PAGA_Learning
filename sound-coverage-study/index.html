@@ -186,7 +186,7 @@
               <input data-project-field="heatmapOpacity" type="range" min="0.1" max="1" step="0.05">
             </label>
           </div>
-          <p class="microcopy">The source studies permit a simplified 1 dB allowance for combined secondary attenuation. Obstacles below add explicit insertion loss.</p>
+          <p class="microcopy">No fixed loss is applied by default: the studies list attenuation categories but do not state a numeric miscellaneous allowance. Enter a verified project value only; obstacles below add explicit insertion loss.</p>
         </div>
       </details>
     </aside>
@@ -312,7 +312,7 @@
         <div class="method-icon">Σ</div>
         <div>
           <strong>Screening model, not a ray-tracing replacement</strong>
-          <p>The app applies source reference level, power adjustment, inverse-square divergence, an editable directional approximation, fixed/air losses, simplified obstacle insertion loss, and energetic summation. It does not reproduce EASE reflections, full manufacturer polar data, diffraction, reverberation, STI/RASTI, or octave-band propagation.</p>
+          <p>The app applies source reference level, power adjustment, inverse-square divergence, editable horizontal and vertical directivity, fixed/air losses, simplified obstacle insertion loss, and energetic summation. It is a free-field screening model: indoor reverberant buildup can make it under-predict level beyond the critical distance, obstacle losses are binary rather than diffraction-based, and it does not calculate STI/RASTI or octave-band propagation.</p>
         </div>
       </section>
 

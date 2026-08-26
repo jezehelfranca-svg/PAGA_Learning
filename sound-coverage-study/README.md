@@ -18,7 +18,7 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 
 - PAGING, PA, and ESS acceptance presets traced to the three IFC studies.
 - Interactive receiver-plane heatmap for compliance, sound level, or signal-to-noise margin.
-- Drag-and-place sound sources with a direct rotation handle, live beam feedback, optional 15-degree Shift snapping, and editable acoustic inputs.
+- Drag-and-place sound sources with a direct rotation handle, live beam feedback, optional 15-degree Shift snapping, and editable horizontal/vertical −6 dB beam inputs.
 - Rectangular ambient-noise zones and simplified line-of-sight obstacles.
 - Energetic summation of multiple sources.
 - Connected-load and amplifier-headroom schedule by speaker loop.
@@ -37,7 +37,7 @@ Lp,i = Lref + 10 log10(P / Pref) - 20 log10(r / rref) - directivity - attenuatio
 Ltotal = 10 log10(sum(10^(Lp,i / 10)))
 ```
 
-The app does not reproduce EASE, ISO 9613 octave-band propagation, manufacturer polar data, reflections, diffraction, reverberation, STI/RASTI, or commissioning measurements. Device profiles marked **Verify** contain an editable reference-SPL placeholder because the repository documents name the equipment and power rating but do not expose a readable sensitivity value. Replace those fields with approved datasheet data before relying on a result.
+The app remains a free-field screening model. It does not reproduce EASE, ISO 9613 octave-band propagation, full manufacturer polar data, reflections, diffraction, reverberant buildup, STI/RASTI, or commissioning measurements. It can therefore under-predict indoor levels beyond the critical distance, and its obstacle loss is a binary user-entered screen rather than a diffraction calculation. Device profiles marked **Verify** contain editable placeholders because the repository documents name the equipment and power rating but do not expose complete machine-readable sensitivity and polar data. Replace those fields with approved datasheet data before relying on a result.
 
 The ESS study maps in dBC while also stating a personnel maximum in dBA. The app therefore leaves that maximum unenforced by default until the weighting basis is reconciled by the engineer.
 

@@ -137,3 +137,74 @@ test("compliance optimizer can recognize coverage from existing sources", () => 
   assert.equal(result.layout.count, 0);
   assert.equal(result.assessment.compliant, true);
 });
+
+test("horizontal beam edge follows the minus 6 dB convention", () => {
+  const item = source({ azimuth: 0, beamWidth: 120, rearAttenuation: 20 });
+  const radians = Model.degreesToRadians(60);
+  const loss = Model.directivityLoss(item, 10 * Math.cos(radians), 10 * Math.sin(radians));
+  assert.ok(Math.abs(loss - 6) < 0.001);
+});
+
+test("vertical beam edge follows the minus 6 dB convention", () => {
+  const item = source({ z: 10, beamWidth: 360, verticalBeamWidth: 60, elevation: 0, rearAttenuation: 20 });
+  const horizontalDistance = 10 / Math.tan(Model.degreesToRadians(30));
+  const loss = Model.directivityLoss(item, horizontalDistance, 0, 0);
+  assert.ok(Math.abs(loss - 6) < 0.001);
+});
+
+test("overlapping noise zones use the highest active ambient level", () => {
+  const project = simpleProject();
+  project.ambientLevel = 55;
+  project.noiseZones = [
+    { x: 0, y: 0, width: 10, depth: 10, level: 65, enabled: true },
+    { x: 0, y: 0, width: 10, depth: 10, level: 60, enabled: true },
+    { x: 0, y: 0, width: 10, depth: 10, level: 90, enabled: false },
+  ];
+  assert.equal(Model.noiseAtPoint(project, 5, 5), 65);
+});
+
+test("loop summary excludes disabled sources and applies amplifier headroom", () => {
+  const project = simpleProject();
+  project.amplifierHeadroom = 20;
+  project.sources = [
+    source({ loop: "L1", tapPower: 10 }),
+    source({ loop: "L1", tapPower: 5 }),
+    source({ loop: "L2", tapPower: 100, enabled: false }),
+  ];
+  const loops = Model.summarizeLoops(project);
+  assert.deepEqual(loops, [{ name: "L1", count: 2, connectedLoad: 15, withHeadroom: 18 }]);
+});
+
+test("project sanitization clamps nested objects, strips unknown keys, and migrates legacy loss", () => {
+  const project = Model.sanitizeProject({
+    schemaVersion: 1,
+    mode: "paging",
+    width: 20,
+    depth: 10,
+    fixedLoss: 1,
+    unknownTopLevel: "discard",
+    sources: [{ presetKey: "custom", x: -5, y: 99, tapPower: 1e300, beamWidth: 999, verticalBeamWidth: 0, confidence: "sourced", unknown: true }],
+    noiseZones: [{ x: -10, y: 0, width: 999, depth: 999, level: 999, unknown: true }],
+    obstacles: [{ x: 19.95, y: 9.95, width: 999, depth: 999, height: 1e9, loss: -10, unknown: true }],
+  });
+  assert.equal(project.schemaVersion, 2);
+  assert.equal(project.fixedLoss, 0);
+  assert.equal("unknownTopLevel" in project, false);
+  assert.equal(project.sources[0].x, 0);
+  assert.equal(project.sources[0].y, 10);
+  assert.equal(project.sources[0].tapPower, 1000000);
+  assert.equal(project.sources[0].beamWidth, 360);
+  assert.equal(project.sources[0].verticalBeamWidth, 1);
+  assert.equal(project.sources[0].confidence, "user");
+  assert.equal("unknown" in project.sources[0], false);
+  assert.equal(project.noiseZones[0].level, 180);
+  assert.equal("unknown" in project.noiseZones[0], false);
+  assert.equal(project.obstacles[0].height, 1000);
+  assert.equal(project.obstacles[0].loss, 0);
+  assert.equal("unknown" in project.obstacles[0], false);
+});
+
+test("fixed loss defaults to zero while explicit schema v2 values are preserved", () => {
+  assert.equal(Model.createProject("paging").fixedLoss, 0);
+  assert.equal(Model.sanitizeProject({ schemaVersion: 2, mode: "paging", fixedLoss: 1 }).fixedLoss, 1);
+});
