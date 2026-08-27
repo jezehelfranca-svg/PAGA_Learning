@@ -359,7 +359,7 @@
     canvas.style.cursor = "";
     document.getElementById("mapHint").textContent = measurementMode
       ? "Measure ; click the first point"
-      : "Select devices to sweep or box-select ; drag symbol to move ; drag its round handle to rotate";
+      : "Drag empty space to box-select ; press S to sweep-select ; drag symbol to move ; drag its round handle to rotate";
     updateMeasurementReadout();
     scheduleCanvasRender();
   }
@@ -545,6 +545,7 @@
     drawSources();
     drawAutoPlacementPreview();
     drawSelectionPreview();
+    drawSelectionModeBanner();
     context.restore();
 
     context.save();
@@ -1068,8 +1069,9 @@
           ? "Click the plan to add a noise zone"
           : placementMode === "obstacle"
             ? "Click the plan to add an obstacle"
-            : "Drag symbol to move | drag its round handle to rotate | hold Shift to snap 15 degrees | middle-drag to pan";
+            : "Drag empty space to box-select | press S to sweep-select | drag symbol to move | drag its round handle to rotate | middle-drag to pan";
     document.getElementById("mapHint").textContent = label;
+    if (placementMode === "select") showToast("Select devices active: start on a device to sweep, or drag empty space for a box.");
     scheduleCanvasRender();
   }
 
@@ -1134,9 +1136,18 @@
 
   function finishSourceSelectionGesture(position) {
     if (!selectionDrag) return;
+    if (selectionDrag.implicit && !selectionDrag.moved) {
+      selectionDrag = null;
+      canvas.style.cursor = "";
+      renderObjectList();
+      renderInspector();
+      scheduleCanvasRender();
+      return;
+    }
     if (selectionDrag.mode === "box") updateBoxSelection(canvasToPlan(position.x, position.y));
     else sweepSourceSelection(selectionDrag.last, position);
     selectionDrag = null;
+    canvas.style.cursor = placementMode === "select" ? "crosshair" : "";
     const count = selectedObjects().filter((entry) => entry.type === "source").length;
     renderObjectList();
     renderInspector();
@@ -1145,7 +1156,7 @@
   }
 
   function drawSelectionPreview() {
-    if (!selectionDrag || selectionDrag.mode !== "box") return;
+    if (!selectionDrag || selectionDrag.mode !== "box" || (selectionDrag.implicit && !selectionDrag.moved)) return;
     const rectangle = autoPlacementRectangle(selectionDrag.start, selectionDrag.end);
     const topLeft = planToCanvas(rectangle.x, rectangle.y);
     const width = rectangle.width * layout.scale;
@@ -1166,6 +1177,22 @@
     context.fillRect(topLeft.x + 5, Math.max(layout.top + 20, topLeft.y + 5), labelWidth, 20);
     context.fillStyle = "#ffffff";
     context.fillText(label, topLeft.x + 12, Math.max(layout.top + 35, topLeft.y + 20));
+    context.restore();
+  }
+
+  function drawSelectionModeBanner() {
+    if (placementMode !== "select") return;
+    const x = layout.left + 10;
+    const y = layout.top + 10;
+    const width = Math.min(310, Math.max(180, layout.planWidth - 20));
+    context.save();
+    context.fillStyle = "rgba(13, 91, 88, 0.94)";
+    context.fillRect(x, y, width, 42);
+    context.fillStyle = "#ffffff";
+    context.font = "800 10px Segoe UI, sans-serif";
+    context.fillText("SELECT DEVICES ACTIVE", x + 10, y + 15);
+    context.font = "600 9px Segoe UI, sans-serif";
+    context.fillText("Start on a device to sweep · empty space for box", x + 10, y + 31);
     context.restore();
   }
 
@@ -1856,6 +1883,15 @@
       }
       const hit = hitTest(position);
       const additiveSelection = event.ctrlKey || event.metaKey || event.shiftKey;
+      if (!hit) {
+        const baseKeys = additiveSelection ? new Set(selectedKeys) : new Set();
+        if (!additiveSelection) clearSelection();
+        selectionDrag = { mode: "box", start: planPoint, end: planPoint, baseKeys, implicit: true, moved: false, startCanvas: position };
+        renderObjectList();
+        renderInspector();
+        scheduleCanvasRender();
+        return;
+      }
       if (hit && additiveSelection) toggleSelection({ type: hit.type, id: hit.id });
       else if (!additiveSelection) setSingleSelection(hit ? { type: hit.type, id: hit.id } : null);
       renderObjectList();
@@ -1872,6 +1908,10 @@
         return;
       }
       if (selectionDrag) {
+        if (selectionDrag.implicit && !selectionDrag.moved) {
+          if (Math.hypot(position.x - selectionDrag.startCanvas.x, position.y - selectionDrag.startCanvas.y) < 5) return;
+          selectionDrag.moved = true;
+        }
         canvas.style.cursor = "crosshair";
         mapTooltip.hidden = true;
         if (selectionDrag.mode === "box") updateBoxSelection(canvasToPlan(position.x, position.y));
@@ -1987,6 +2027,10 @@
     document.addEventListener("keydown", (event) => {
       const tag = document.activeElement && document.activeElement.tagName;
       const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+      if (!editing && !document.querySelector("dialog[open]") && event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        setPlacementMode("select");
+      }
       if (event.key === "Escape") {
         viewPanning = null;
         autoPlacementDrag = null;

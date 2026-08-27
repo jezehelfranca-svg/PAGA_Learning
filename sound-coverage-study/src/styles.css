@@ -765,6 +765,16 @@ input[type="range"] {
   line-height: 1;
 }
 
+.tool-shortcut {
+  min-width: 17px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 8px;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
 .icon-toggle {
   width: 34px;
   height: 34px;
