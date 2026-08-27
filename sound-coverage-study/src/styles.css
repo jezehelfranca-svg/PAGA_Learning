@@ -709,6 +709,7 @@ input[type="range"] {
 
 .workspace-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   justify-content: space-between;
   gap: 12px;
@@ -723,9 +724,20 @@ input[type="range"] {
 .placement-tools,
 .view-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 7px;
   min-width: 0;
+}
+
+.placement-tools {
+  flex: 1 1 100%;
+}
+
+.view-tools {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .compact-select {

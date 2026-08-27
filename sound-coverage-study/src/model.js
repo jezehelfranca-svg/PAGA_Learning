@@ -814,6 +814,49 @@
     return items.length;
   }
 
+  function clampGroupTranslation(items, deltaX, deltaY, planWidth, planDepth) {
+    const objects = (Array.isArray(items) ? items : []).filter((item) => item && typeof item === "object");
+    if (!objects.length) return { x: 0, y: 0 };
+    let minimumX = -Infinity;
+    let maximumX = Infinity;
+    let minimumY = -Infinity;
+    let maximumY = Infinity;
+    objects.forEach((item) => {
+      const x = finiteNumber(item.x, 0);
+      const y = finiteNumber(item.y, 0);
+      const width = Math.max(0, finiteNumber(item.width, 0));
+      const depth = Math.max(0, finiteNumber(item.depth, 0));
+      minimumX = Math.max(minimumX, -x);
+      maximumX = Math.min(maximumX, Math.max(0, finiteNumber(planWidth, 0)) - x - width);
+      minimumY = Math.max(minimumY, -y);
+      maximumY = Math.min(maximumY, Math.max(0, finiteNumber(planDepth, 0)) - y - depth);
+    });
+    return {
+      x: clamp(finiteNumber(deltaX, 0), minimumX, maximumX),
+      y: clamp(finiteNumber(deltaY, 0), minimumY, maximumY),
+    };
+  }
+
+  function resizeRectangle(rectangle, handle, point, bounds, minimumSize = 0.1) {
+    const left0 = finiteNumber(rectangle && rectangle.x, 0);
+    const top0 = finiteNumber(rectangle && rectangle.y, 0);
+    const right0 = left0 + Math.max(minimumSize, finiteNumber(rectangle && rectangle.width, minimumSize));
+    const bottom0 = top0 + Math.max(minimumSize, finiteNumber(rectangle && rectangle.depth, minimumSize));
+    const planWidth = Math.max(minimumSize, finiteNumber(bounds && bounds.width, right0));
+    const planDepth = Math.max(minimumSize, finiteNumber(bounds && bounds.depth, bottom0));
+    const x = finiteNumber(point && point.x, left0);
+    const y = finiteNumber(point && point.y, top0);
+    let left = left0;
+    let right = right0;
+    let top = top0;
+    let bottom = bottom0;
+    if (String(handle).includes("w")) left = clamp(x, 0, right0 - minimumSize);
+    if (String(handle).includes("e")) right = clamp(x, left0 + minimumSize, planWidth);
+    if (String(handle).includes("n")) top = clamp(y, 0, bottom0 - minimumSize);
+    if (String(handle).includes("s")) bottom = clamp(y, top0 + minimumSize, planDepth);
+    return { x: left, y: top, width: right - left, depth: bottom - top };
+  }
+
   function removeProjectObjects(project, selections) {
     if (!project || typeof project !== "object" || !Array.isArray(selections)) return 0;
     const keys = new Set(selections
@@ -996,6 +1039,8 @@
     pointSegmentDistance,
     sourceIdsInsideRectangle,
     applySourceBatchEdits,
+    clampGroupTranslation,
+    resizeRectangle,
     removeProjectObjects,
     instantiateDevice,
     createProject,

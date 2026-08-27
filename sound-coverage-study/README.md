@@ -20,6 +20,8 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 - Interactive receiver-plane heatmap for compliance, sound level, or signal-to-noise margin.
 - Drag-and-place sound sources with a direct rotation handle, live beam feedback, optional 15-degree Shift snapping, and editable horizontal/vertical −6 dB beam inputs.
 - Device selection by S-key/toolbar sweep, direct empty-space drag-box, or Ctrl/Cmd and Shift additive selection, with live absolute-azimuth batch editing, shared engineering-property editing, confirmed multi-delete, and per-category Clear all actions.
+- Group movement for selected sources, noise zones, and obstacles, constrained so every selected object remains inside the study plan.
+- Rectangular obstacle drawing by click-drag, plus direct corner-handle resizing on the coverage map.
 - Rectangular ambient-noise zones and simplified line-of-sight obstacles.
 - Energetic summation of multiple sources.
 - Connected-load and amplifier-headroom schedule by speaker loop.

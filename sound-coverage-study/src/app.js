@@ -11,6 +11,8 @@
   const MAX_VIEW_ZOOM = 8;
   const MAX_AUTO_SOURCES = 500;
   const SELECTION_BRUSH_RADIUS = 18;
+  const OBSTACLE_HANDLE_HIT_RADIUS = 9;
+  const MIN_OBSTACLE_SIZE = 0.1;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -44,6 +46,7 @@
   let viewPanY = 0;
   let viewPanning = null;
   let autoPlacementDrag = null;
+  let obstaclePlacementDrag = null;
   let selectionDrag = null;
 
   function loadProject() {
@@ -68,6 +71,14 @@
   function round(value, digits = 1) {
     if (!Number.isFinite(value)) return "—";
     return Number(value).toFixed(digits);
+  }
+
+  function roundPlanValue(value) {
+    return Number(Number(value).toFixed(3));
+  }
+
+  function roundDrawnValue(value) {
+    return Number(Number(value).toFixed(1));
   }
 
   function decibelUnit() {
@@ -342,6 +353,7 @@
     measurementMode = Boolean(active);
     if (measurementMode) {
       placementMode = null;
+      obstaclePlacementDrag = null;
       document.getElementById("selectSourcesButton").classList.remove("placing");
       document.getElementById("selectSourcesButton").setAttribute("aria-pressed", "false");
       document.getElementById("placeSourceButton").classList.remove("placing");
@@ -357,7 +369,7 @@
     canvas.style.cursor = "";
     document.getElementById("mapHint").textContent = measurementMode
       ? "Measure ; click the first point"
-      : "Drag empty space to box-select ; press S to sweep-select ; drag symbol to move ; drag its round handle to rotate";
+      : "Drag a selected item to move the group ; drag empty space to box-select ; drag an obstacle corner to resize";
     updateMeasurementReadout();
     scheduleCanvasRender();
   }
@@ -542,6 +554,7 @@
     if (project.showBeams) drawBeams();
     drawSources();
     drawAutoPlacementPreview();
+    drawObstaclePlacementPreview();
     drawSelectionPreview();
     drawSelectionModeBanner();
     context.restore();
@@ -685,6 +698,17 @@
     context.restore();
   }
 
+  function obstacleResizeHandles(obstacle) {
+    const topLeft = planToCanvas(obstacle.x, obstacle.y);
+    const bottomRight = planToCanvas(obstacle.x + obstacle.width, obstacle.y + obstacle.depth);
+    return [
+      { part: "resize-nw", cursor: "nwse-resize", x: topLeft.x, y: topLeft.y },
+      { part: "resize-ne", cursor: "nesw-resize", x: bottomRight.x, y: topLeft.y },
+      { part: "resize-sw", cursor: "nesw-resize", x: topLeft.x, y: bottomRight.y },
+      { part: "resize-se", cursor: "nwse-resize", x: bottomRight.x, y: bottomRight.y },
+    ];
+  }
+
   function drawObstacles() {
     const obstacles = Array.isArray(project.obstacles) ? project.obstacles : [];
     context.save();
@@ -700,7 +724,40 @@
       context.lineWidth = isSelected ? 2.5 : 1;
       context.strokeRect(position.x, position.y, width, height);
       if (project.showLabels) drawCanvasLabel(`${obstacle.name} · −${round(obstacle.loss, 1)} dB`, position.x + 5, position.y + 14, "#0b2526");
+      if (isSelected) {
+        obstacleResizeHandles(obstacle).forEach((handle) => {
+          context.fillStyle = "#ffffff";
+          context.strokeStyle = "#0d5b58";
+          context.lineWidth = 2;
+          context.fillRect(handle.x - 4, handle.y - 4, 8, 8);
+          context.strokeRect(handle.x - 4, handle.y - 4, 8, 8);
+        });
+      }
     }
+    context.restore();
+  }
+
+  function drawObstaclePlacementPreview() {
+    if (!obstaclePlacementDrag) return;
+    const rectangle = autoPlacementRectangle(obstaclePlacementDrag.start, obstaclePlacementDrag.end);
+    const topLeft = planToCanvas(rectangle.x, rectangle.y);
+    const width = rectangle.width * layout.scale;
+    const height = rectangle.depth * layout.scale;
+    context.save();
+    context.fillStyle = "rgba(36,53,53,0.28)";
+    context.strokeStyle = "#0d5b58";
+    context.lineWidth = 2;
+    context.setLineDash([6, 4]);
+    context.fillRect(topLeft.x, topLeft.y, width, height);
+    context.strokeRect(topLeft.x, topLeft.y, width, height);
+    context.setLineDash([]);
+    const label = `${round(rectangle.width, 1)} × ${round(rectangle.depth, 1)} m`;
+    context.font = "700 10px Segoe UI, sans-serif";
+    const labelWidth = context.measureText(label).width + 14;
+    context.fillStyle = "#0d5b58";
+    context.fillRect(topLeft.x + 5, Math.max(layout.top + 20, topLeft.y + 5), labelWidth, 20);
+    context.fillStyle = "#ffffff";
+    context.fillText(label, topLeft.x + 12, Math.max(layout.top + 34, topLeft.y + 19));
     context.restore();
   }
 
@@ -1007,7 +1064,7 @@
           ${numberField("Height", "height", obstacle.height, { min: 0, max: 1000, step: 0.1, unit: "m" })}
           ${numberField("Insertion loss", "loss", obstacle.loss, { min: 0, max: 100, step: 0.5, unit: "dB" })}
         </div>
-        <div class="provenance-note">A rectangular line-of-sight screening loss is applied when the source-to-receiver ray intersects the obstacle below its height. This is not diffraction or reflection modeling.</div>
+        <div class="provenance-note">Drag a corner handle on the drawing to change width and depth. A rectangular line-of-sight screening loss is applied when the source-to-receiver ray intersects the obstacle below its height. This is not diffraction or reflection modeling.</div>
         ${enabledField(obstacle.enabled)}
         <div class="inspector-actions">
           <button class="button" type="button" data-object-action="duplicate">Duplicate</button>
@@ -1048,6 +1105,7 @@
     placementMode = placementMode === mode ? null : mode;
     if (mode && measurementMode) setMeasurementMode(false, { clear: false });
     if (placementMode !== "autoArea") autoPlacementDrag = null;
+    if (placementMode !== "obstacle") obstaclePlacementDrag = null;
     if (placementMode !== "select") selectionDrag = null;
     document.getElementById("selectSourcesButton").classList.toggle("placing", placementMode === "select");
     document.getElementById("selectSourcesButton").setAttribute("aria-pressed", String(placementMode === "select"));
@@ -1066,8 +1124,8 @@
         : placementMode === "noise"
           ? "Click the plan to add a noise zone"
           : placementMode === "obstacle"
-            ? "Click the plan to add an obstacle"
-            : "Drag empty space to box-select | press S to sweep-select | drag symbol to move | drag its round handle to rotate | middle-drag to pan";
+            ? "Click-drag on the plan to draw a rectangular obstacle"
+            : "Drag selection to move group | drag empty space to box-select | drag obstacle corner to resize | middle-drag to pan";
     document.getElementById("mapHint").textContent = label;
     if (placementMode === "select") showToast("Select devices active: start on a device to sweep, or drag empty space for a box.");
     scheduleCanvasRender();
@@ -1356,6 +1414,38 @@
     context.fillText(label, labelX + 8, labelY - 2);
     context.restore();
   }
+  function createObstacle(rectangle) {
+    const obstacle = {
+      id: Model.makeId("obstacle"),
+      name: `Obstacle ${project.obstacles.length + 1}`,
+      x: roundDrawnValue(rectangle.x),
+      y: roundDrawnValue(rectangle.y),
+      width: roundDrawnValue(rectangle.width),
+      depth: roundDrawnValue(rectangle.depth),
+      height: 6,
+      loss: 10,
+      enabled: true,
+    };
+    project.obstacles.push(obstacle);
+    setSingleSelection({ type: "obstacle", id: obstacle.id });
+    return obstacle;
+  }
+
+  function finishObstaclePlacement() {
+    if (!obstaclePlacementDrag) return;
+    const start = obstaclePlacementDrag.start;
+    const rectangle = autoPlacementRectangle(start, obstaclePlacementDrag.end);
+    obstaclePlacementDrag = null;
+    if (rectangle.width < MIN_OBSTACLE_SIZE || rectangle.depth < MIN_OBSTACLE_SIZE) {
+      addAtPoint("obstacle", start);
+      return;
+    }
+    createObstacle(rectangle);
+    setPlacementMode(null);
+    markChanged();
+    showToast(`Obstacle drawn at ${round(rectangle.width, 1)} × ${round(rectangle.depth, 1)} m. Drag a corner handle to resize.`);
+  }
+
   function addAtPoint(type, point) {
     if (type === "source") {
       const key = document.getElementById("devicePresetSelect").value;
@@ -1387,20 +1477,13 @@
     } else {
       const width = Math.min(project.width * 0.2, 24);
       const depth = Math.min(project.depth * 0.15, 14);
-      const obstacle = {
-        id: Model.makeId("obstacle"),
-        name: `Obstacle ${project.obstacles.length + 1}`,
+      createObstacle({
         x: Model.clamp(point.x - width / 2, 0, project.width - width),
         y: Model.clamp(point.y - depth / 2, 0, project.depth - depth),
         width,
         depth,
-        height: 6,
-        loss: 10,
-        enabled: true,
-      };
-      project.obstacles.push(obstacle);
-      setSingleSelection({ type: "obstacle", id: obstacle.id });
-      showToast("Obstacle added. Set a verified insertion loss before issue.");
+      });
+      showToast("Obstacle added. Drag a corner handle to resize, then set a verified insertion loss.");
     }
     setPlacementMode(null);
     markChanged();
@@ -1412,6 +1495,12 @@
   }
 
   function hitTest(canvasPoint) {
+    for (let index = project.obstacles.length - 1; index >= 0; index -= 1) {
+      const obstacle = project.obstacles[index];
+      if (obstacle.enabled === false || !selectionHas("obstacle", obstacle.id)) continue;
+      const handle = obstacleResizeHandles(obstacle).find((item) => Math.hypot(canvasPoint.x - item.x, canvasPoint.y - item.y) <= OBSTACLE_HANDLE_HIT_RADIUS);
+      if (handle) return { type: "obstacle", id: obstacle.id, object: obstacle, part: handle.part, cursor: handle.cursor };
+    }
     for (let index = project.sources.length - 1; index >= 0; index -= 1) {
       const source = project.sources[index];
       const handle = rotationHandlePosition(source);
@@ -1439,20 +1528,52 @@
   function startDrag(hit, planPoint) {
     if (!hit) return;
     const object = hit.object;
+    if (hit.part && hit.part.startsWith("resize-")) {
+      dragging = {
+        type: hit.type,
+        id: hit.id,
+        object,
+        action: "resize",
+        handle: hit.part.slice("resize-".length),
+        rectangle: { x: object.x, y: object.y, width: object.width, depth: object.depth },
+      };
+      canvas.style.cursor = hit.cursor || "nwse-resize";
+      canvas.classList.add("resizing");
+      return;
+    }
+    if (hit.part === "rotation") {
+      dragging = { type: hit.type, id: hit.id, object, action: "rotate" };
+      canvas.style.cursor = "grabbing";
+      canvas.classList.add("rotating");
+      return;
+    }
+    const selectedEntries = selectedObjects();
+    const entries = selectionHas(hit.type, hit.id) && selectedEntries.length > 1
+      ? selectedEntries
+      : [{ type: hit.type, id: hit.id, object }];
     dragging = {
       type: hit.type,
       id: hit.id,
-      action: hit.part === "rotation" ? "rotate" : "move",
-      offsetX: planPoint.x - object.x,
-      offsetY: planPoint.y - object.y,
+      object,
+      action: "move",
+      start: { x: planPoint.x, y: planPoint.y },
+      items: entries.map((entry) => ({
+        type: entry.type,
+        id: entry.id,
+        object: entry.object,
+        x: entry.object.x,
+        y: entry.object.y,
+        width: entry.type === "source" ? 0 : entry.object.width,
+        depth: entry.type === "source" ? 0 : entry.object.depth,
+      })),
     };
-    canvas.style.cursor = "";
-    canvas.classList.add(hit.part === "rotation" ? "rotating" : "dragging");
+    canvas.style.cursor = "grabbing";
+    canvas.classList.add("dragging");
   }
 
   function moveDraggedObject(planPoint, event) {
     if (!dragging) return;
-    const object = getSelectedObject();
+    const object = dragging.object;
     if (!object) return;
     if (dragging.action === "rotate") {
       let angle = (Math.atan2(planPoint.y - object.y, planPoint.x - object.x) * 180) / Math.PI;
@@ -1462,10 +1583,25 @@
       recalculate();
       return;
     }
-    const objectWidth = dragging.type === "source" ? 0 : object.width;
-    const objectDepth = dragging.type === "source" ? 0 : object.depth;
-    object.x = Model.clamp(planPoint.x - dragging.offsetX, 0, Math.max(0, project.width - objectWidth));
-    object.y = Model.clamp(planPoint.y - dragging.offsetY, 0, Math.max(0, project.depth - objectDepth));
+    if (dragging.action === "resize") {
+      const rectangle = Model.resizeRectangle(dragging.rectangle, dragging.handle, planPoint, { width: project.width, depth: project.depth }, MIN_OBSTACLE_SIZE);
+      Object.assign(object, {
+        x: roundDrawnValue(rectangle.x),
+        y: roundDrawnValue(rectangle.y),
+        width: roundDrawnValue(rectangle.width),
+        depth: roundDrawnValue(rectangle.depth),
+      });
+      project.updatedAt = new Date().toISOString();
+      recalculate();
+      return;
+    }
+    const requestedX = planPoint.x - dragging.start.x;
+    const requestedY = planPoint.y - dragging.start.y;
+    const delta = Model.clampGroupTranslation(dragging.items, requestedX, requestedY, project.width, project.depth);
+    dragging.items.forEach((item) => {
+      item.object.x = roundPlanValue(item.x + delta.x);
+      item.object.y = roundPlanValue(item.y + delta.y);
+    });
     project.updatedAt = new Date().toISOString();
     recalculate();
   }
@@ -1858,6 +1994,11 @@
         scheduleCanvasRender();
         return;
       }
+      if (placementMode === "obstacle") {
+        obstaclePlacementDrag = { start: planPoint, end: planPoint };
+        scheduleCanvasRender();
+        return;
+      }
       if (placementMode === "select") {
         const additive = event.ctrlKey || event.metaKey || event.shiftKey;
         const baseKeys = additive ? new Set(selectedKeys) : new Set();
@@ -1903,8 +2044,9 @@
         scheduleCanvasRender();
         return;
       }
+      const preserveGroup = !additiveSelection && selectionHas(hit.type, hit.id) && selectedObjects().length > 1;
       if (hit && additiveSelection) toggleSelection({ type: hit.type, id: hit.id });
-      else if (!additiveSelection) setSingleSelection(hit ? { type: hit.type, id: hit.id } : null);
+      else if (!additiveSelection && !preserveGroup) setSingleSelection({ type: hit.type, id: hit.id });
       renderObjectList();
       renderInspector();
       if (hit && !additiveSelection) startDrag(hit, planPoint);
@@ -1938,6 +2080,13 @@
         scheduleCanvasRender();
         return;
       }
+      if (obstaclePlacementDrag) {
+        obstaclePlacementDrag.end = canvasToPlan(position.x, position.y);
+        canvas.style.cursor = "crosshair";
+        mapTooltip.hidden = true;
+        scheduleCanvasRender();
+        return;
+      }
       if (dragging) moveDraggedObject(canvasToPlan(position.x, position.y), event);
       if (dragging) return;
       if (measurementMode) {
@@ -1954,7 +2103,7 @@
         mapTooltip.hidden = true;
       } else {
         const hit = placementMode ? null : hitTest(position);
-        canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
+        canvas.style.cursor = hit?.cursor || (hit && hit.part === "rotation" ? "grab" : hit ? "move" : "");
         showMapTooltip(event, position);
       }
     });
@@ -1975,10 +2124,17 @@
         finishAutoPlacement();
         return;
       }
+      if (obstaclePlacementDrag) {
+        const position = pointerPosition(event);
+        obstaclePlacementDrag.end = canvasToPlan(position.x, position.y);
+        finishObstaclePlacement();
+        return;
+      }
       if (dragging) {
         dragging = null;
         canvas.classList.remove("dragging");
         canvas.classList.remove("rotating");
+        canvas.classList.remove("resizing");
         renderInspector();
         renderObjectList();
         debounceSave();
@@ -1988,9 +2144,11 @@
       dragging = null;
       viewPanning = null;
       autoPlacementDrag = null;
+      obstaclePlacementDrag = null;
       selectionDrag = null;
       canvas.classList.remove("dragging");
       canvas.classList.remove("rotating");
+      canvas.classList.remove("resizing");
       canvas.classList.remove("panning");
       canvas.style.cursor = "";
       renderObjectList();

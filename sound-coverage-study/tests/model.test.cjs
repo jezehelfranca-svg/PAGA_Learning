@@ -271,3 +271,22 @@ test("batch source edits set the same absolute azimuth on every selected source"
   Model.applySourceBatchEdits(sources, { azimuthMode: "set", azimuth: 270 });
   assert.deepEqual(sources.map((item) => item.azimuth), [270, 270]);
 });
+
+test("group translation is clamped by the outermost selected object", () => {
+  const delta = Model.clampGroupTranslation([
+    { x: 2, y: 4 },
+    { x: 15, y: 12, width: 4, depth: 5 },
+  ], 10, -10, 20, 20);
+  assert.deepEqual(delta, { x: 1, y: -4 });
+});
+
+test("rectangle resize keeps the opposite corner fixed and respects plan bounds", () => {
+  assert.deepEqual(
+    Model.resizeRectangle({ x: 5, y: 5, width: 10, depth: 8 }, "nw", { x: 2, y: 3 }, { width: 20, depth: 20 }),
+    { x: 2, y: 3, width: 13, depth: 10 },
+  );
+  assert.deepEqual(
+    Model.resizeRectangle({ x: 5, y: 5, width: 10, depth: 8 }, "se", { x: 99, y: 99 }, { width: 20, depth: 20 }),
+    { x: 5, y: 5, width: 15, depth: 15 },
+  );
+});
