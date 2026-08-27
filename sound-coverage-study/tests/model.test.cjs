@@ -138,6 +138,13 @@ test("compliance optimizer can recognize coverage from existing sources", () => 
   assert.equal(result.assessment.compliant, true);
 });
 
+test("automatic placement always assigns zero-degree azimuth", () => {
+  const layout = Model.createPlacementGrid({ x: 0, y: 0, width: 10, depth: 10 }, 2, 2);
+  const sources = Model.createPlacementSources("custom", layout, { baseAzimuth: 75, alternateAzimuth: true });
+  assert.ok(sources.length > 1);
+  assert.ok(sources.every((item) => item.azimuth === 0));
+});
+
 test("horizontal beam edge follows the minus 6 dB convention", () => {
   const item = source({ azimuth: 0, beamWidth: 120, rearAttenuation: 20 });
   const radians = Model.degreesToRadians(60);

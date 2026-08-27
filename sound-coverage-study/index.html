@@ -375,17 +375,11 @@
         </select>
       </label>
       <div id="autoComplianceFields">
-        <div class="field-grid two auto-place-fields">
-          <label class="field">
-            <span>Design reserve above target (dB)</span>
-            <input id="autoDesignMargin" type="number" min="0" max="20" step="0.5" value="3">
-          </label>
-          <label class="field">
-            <span>Base azimuth (degrees)</span>
-            <input id="autoBaseAzimuth" type="number" min="0" max="359" step="1" value="0">
-          </label>
-        </div>
-        <label class="check-row auto-place-check"><input id="autoAlternateAzimuth" type="checkbox" checked> Alternate adjacent sources by 180 degrees</label>
+        <label class="field">
+          <span>Design reserve above target (dB)</span>
+          <input id="autoDesignMargin" type="number" min="0" max="20" step="0.5" value="3">
+        </label>
+        <p class="source-note auto-place-note"><b>Fixed orientation</b> Every automatically placed source uses an azimuth of 0°.</p>
         <label class="check-row auto-place-check"><input id="autoIncludeExisting" type="checkbox" checked> Include active existing sources in the compliance calculation</label>
         <p class="source-note auto-place-note" id="autoScientificSummary"></p>
       </div>

@@ -2187,17 +2187,11 @@ kbd {
         </select>
       </label>
       <div id="autoComplianceFields">
-        <div class="field-grid two auto-place-fields">
-          <label class="field">
-            <span>Design reserve above target (dB)</span>
-            <input id="autoDesignMargin" type="number" min="0" max="20" step="0.5" value="3">
-          </label>
-          <label class="field">
-            <span>Base azimuth (degrees)</span>
-            <input id="autoBaseAzimuth" type="number" min="0" max="359" step="1" value="0">
-          </label>
-        </div>
-        <label class="check-row auto-place-check"><input id="autoAlternateAzimuth" type="checkbox" checked> Alternate adjacent sources by 180 degrees</label>
+        <label class="field">
+          <span>Design reserve above target (dB)</span>
+          <input id="autoDesignMargin" type="number" min="0" max="20" step="0.5" value="3">
+        </label>
+        <p class="source-note auto-place-note"><b>Fixed orientation</b> Every automatically placed source uses an azimuth of 0°.</p>
         <label class="check-row auto-place-check"><input id="autoIncludeExisting" type="checkbox" checked> Include active existing sources in the compliance calculation</label>
         <p class="source-note auto-place-note" id="autoScientificSummary"></p>
       </div>
@@ -2664,15 +2658,12 @@ kbd {
   }
 
   function createPlacementSources(deviceKey, placementGrid, options = {}) {
-    const baseAzimuth = normalizeAngle(finiteNumber(options.baseAzimuth, 0));
-    const alternateAzimuth = options.alternateAzimuth !== false;
     return placementGrid.points.map((point, index) => {
-      const alternate = alternateAzimuth && (point.row + point.column) % 2 === 1;
       return instantiateDevice(deviceKey, {
         name: `AUTO-${String(index + 1).padStart(3, "0")}`,
         x: point.x,
         y: point.y,
-        azimuth: normalizeAngle(baseAzimuth + (alternate ? 180 : 0)),
+        azimuth: 0,
         loop: `AUTO-${Math.max(1, Math.ceil((index + 1) / 8))}`,
       });
     });
@@ -2961,7 +2952,7 @@ kbd {
       autoPlacementMethod: "compliance",
       autoDesignMargin: 3,
       autoBaseAzimuth: 0,
-      autoAlternateAzimuth: true,
+      autoAlternateAzimuth: false,
       autoIncludeExisting: true,
       viewMode: "compliance",
       showGrid: true,
@@ -3192,8 +3183,8 @@ kbd {
       autoSpacingY: clamp(finiteNumber(input.autoSpacingY, fallback.autoSpacingY), 0.5, 1000),
       autoPlacementMethod: input.autoPlacementMethod === "manual" ? "manual" : "compliance",
       autoDesignMargin: clamp(finiteNumber(input.autoDesignMargin, fallback.autoDesignMargin), 0, 20),
-      autoBaseAzimuth: normalizeAngle(finiteNumber(input.autoBaseAzimuth, fallback.autoBaseAzimuth)),
-      autoAlternateAzimuth: input.autoAlternateAzimuth !== false,
+      autoBaseAzimuth: 0,
+      autoAlternateAzimuth: false,
       autoIncludeExisting: input.autoIncludeExisting !== false,
       viewMode,
       showGrid: input.showGrid !== false,
@@ -3460,8 +3451,6 @@ kbd {
     document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
     document.getElementById("autoPlacementMethod").value = project.autoPlacementMethod || "compliance";
     document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
-    document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
-    document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
     document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
     updateAutoPlacementMethodUI();
     updatePlanCalibrationUI();
@@ -4472,8 +4461,8 @@ kbd {
       spacingX: Number(document.getElementById("autoSpacingX").value),
       spacingY: Number(document.getElementById("autoSpacingY").value),
       designMargin: Number(document.getElementById("autoDesignMargin").value),
-      baseAzimuth: Number(document.getElementById("autoBaseAzimuth").value),
-      alternateAzimuth: document.getElementById("autoAlternateAzimuth").checked,
+      baseAzimuth: 0,
+      alternateAzimuth: false,
       includeExisting: document.getElementById("autoIncludeExisting").checked,
       maxSources: MAX_AUTO_SOURCES,
     };
@@ -4485,32 +4474,31 @@ kbd {
       showToast("Enter valid X and Y spacing of at least 0.5 m.");
       return;
     }
-    if (options.method === "compliance" && (!Number.isFinite(options.designMargin) || options.designMargin < 0 || options.designMargin > 20 || !Number.isFinite(options.baseAzimuth))) {
-      showToast("Enter a design reserve from 0 to 20 dB and a valid base azimuth.");
+    if (options.method === "compliance" && (!Number.isFinite(options.designMargin) || options.designMargin < 0 || options.designMargin > 20)) {
+      showToast("Enter a design reserve from 0 to 20 dB.");
       return;
     }
     project.autoPlacementMethod = options.method;
     project.autoSpacingX = options.spacingX;
     project.autoSpacingY = options.spacingY;
     project.autoDesignMargin = options.designMargin;
-    project.autoBaseAzimuth = Model.normalizeAngle(options.baseAzimuth);
-    project.autoAlternateAzimuth = options.alternateAzimuth;
+    project.autoBaseAzimuth = 0;
+    project.autoAlternateAzimuth = false;
     project.autoIncludeExisting = options.includeExisting;
     autoPlaceDialog.close();
     setPlacementMode("autoArea");
     debounceSave();
   }
 
-  function placeAutoPlacementGrid(gridLayout, deviceKey, options) {
+  function placeAutoPlacementGrid(gridLayout, deviceKey) {
     let lastSource = null;
     gridLayout.points.forEach((point) => {
       const sourceNumber = project.sources.length + 1;
-      const alternate = options.alternateAzimuth && (point.row + point.column) % 2 === 1;
       lastSource = Model.instantiateDevice(deviceKey, {
         name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
-        azimuth: Model.normalizeAngle(options.baseAzimuth + (alternate ? 180 : 0)),
+        azimuth: 0,
         loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
       });
       project.sources.push(lastSource);
@@ -4532,7 +4520,7 @@ kbd {
       showToast(`No fully compliant grid was found within ${MAX_AUTO_SOURCES} sources. Best sampled compliance was ${best}%. Review the device data, criteria, orientation, or obstacles.`);
       return;
     }
-    placeAutoPlacementGrid(result.layout, deviceKey, options);
+    placeAutoPlacementGrid(result.layout, deviceKey);
     setPlacementMode(null);
     showToast(`${result.layout.count} sources placed from compliance: ${result.layout.columns} x ${result.layout.rows}, ${round(result.layout.spacingX, 2)} x ${round(result.layout.spacingY, 2)} m spacing, ${round(result.assessment.minimumReserve, 1)} dB minimum reserve across ${result.sampleCount.toLocaleString()} checks.`);
   }
@@ -4551,8 +4539,8 @@ kbd {
       spacingX: project.autoSpacingX || 12,
       spacingY: project.autoSpacingY || 12,
       designMargin: project.autoDesignMargin ?? 3,
-      baseAzimuth: project.autoBaseAzimuth ?? 0,
-      alternateAzimuth: project.autoAlternateAzimuth !== false,
+      baseAzimuth: 0,
+      alternateAzimuth: false,
       includeExisting: project.autoIncludeExisting !== false,
       maxSources: MAX_AUTO_SOURCES,
     };
@@ -4574,7 +4562,7 @@ kbd {
     }
     autoPlacementDrag = null;
     setPlacementMode(null);
-    placeAutoPlacementGrid(gridLayout, deviceKey, options);
+    placeAutoPlacementGrid(gridLayout, deviceKey);
     showToast(`${gridLayout.count} manually spaced sources placed in a ${gridLayout.columns} x ${gridLayout.rows} centered grid (${round(gridLayout.spacingX, 2)} x ${round(gridLayout.spacingY, 2)} m).`);
   }
 
@@ -5057,8 +5045,6 @@ kbd {
       document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
       document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
       document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
-      document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
-      document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
       document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
       updateAutoPlacementMethodUI();
       autoPlaceDialog.showModal();

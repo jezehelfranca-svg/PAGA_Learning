@@ -409,15 +409,12 @@
   }
 
   function createPlacementSources(deviceKey, placementGrid, options = {}) {
-    const baseAzimuth = normalizeAngle(finiteNumber(options.baseAzimuth, 0));
-    const alternateAzimuth = options.alternateAzimuth !== false;
     return placementGrid.points.map((point, index) => {
-      const alternate = alternateAzimuth && (point.row + point.column) % 2 === 1;
       return instantiateDevice(deviceKey, {
         name: `AUTO-${String(index + 1).padStart(3, "0")}`,
         x: point.x,
         y: point.y,
-        azimuth: normalizeAngle(baseAzimuth + (alternate ? 180 : 0)),
+        azimuth: 0,
         loop: `AUTO-${Math.max(1, Math.ceil((index + 1) / 8))}`,
       });
     });
@@ -706,7 +703,7 @@
       autoPlacementMethod: "compliance",
       autoDesignMargin: 3,
       autoBaseAzimuth: 0,
-      autoAlternateAzimuth: true,
+      autoAlternateAzimuth: false,
       autoIncludeExisting: true,
       viewMode: "compliance",
       showGrid: true,
@@ -937,8 +934,8 @@
       autoSpacingY: clamp(finiteNumber(input.autoSpacingY, fallback.autoSpacingY), 0.5, 1000),
       autoPlacementMethod: input.autoPlacementMethod === "manual" ? "manual" : "compliance",
       autoDesignMargin: clamp(finiteNumber(input.autoDesignMargin, fallback.autoDesignMargin), 0, 20),
-      autoBaseAzimuth: normalizeAngle(finiteNumber(input.autoBaseAzimuth, fallback.autoBaseAzimuth)),
-      autoAlternateAzimuth: input.autoAlternateAzimuth !== false,
+      autoBaseAzimuth: 0,
+      autoAlternateAzimuth: false,
       autoIncludeExisting: input.autoIncludeExisting !== false,
       viewMode,
       showGrid: input.showGrid !== false,

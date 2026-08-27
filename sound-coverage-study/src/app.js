@@ -196,8 +196,6 @@
     document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
     document.getElementById("autoPlacementMethod").value = project.autoPlacementMethod || "compliance";
     document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
-    document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
-    document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
     document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
     updateAutoPlacementMethodUI();
     updatePlanCalibrationUI();
@@ -1208,8 +1206,8 @@
       spacingX: Number(document.getElementById("autoSpacingX").value),
       spacingY: Number(document.getElementById("autoSpacingY").value),
       designMargin: Number(document.getElementById("autoDesignMargin").value),
-      baseAzimuth: Number(document.getElementById("autoBaseAzimuth").value),
-      alternateAzimuth: document.getElementById("autoAlternateAzimuth").checked,
+      baseAzimuth: 0,
+      alternateAzimuth: false,
       includeExisting: document.getElementById("autoIncludeExisting").checked,
       maxSources: MAX_AUTO_SOURCES,
     };
@@ -1221,32 +1219,31 @@
       showToast("Enter valid X and Y spacing of at least 0.5 m.");
       return;
     }
-    if (options.method === "compliance" && (!Number.isFinite(options.designMargin) || options.designMargin < 0 || options.designMargin > 20 || !Number.isFinite(options.baseAzimuth))) {
-      showToast("Enter a design reserve from 0 to 20 dB and a valid base azimuth.");
+    if (options.method === "compliance" && (!Number.isFinite(options.designMargin) || options.designMargin < 0 || options.designMargin > 20)) {
+      showToast("Enter a design reserve from 0 to 20 dB.");
       return;
     }
     project.autoPlacementMethod = options.method;
     project.autoSpacingX = options.spacingX;
     project.autoSpacingY = options.spacingY;
     project.autoDesignMargin = options.designMargin;
-    project.autoBaseAzimuth = Model.normalizeAngle(options.baseAzimuth);
-    project.autoAlternateAzimuth = options.alternateAzimuth;
+    project.autoBaseAzimuth = 0;
+    project.autoAlternateAzimuth = false;
     project.autoIncludeExisting = options.includeExisting;
     autoPlaceDialog.close();
     setPlacementMode("autoArea");
     debounceSave();
   }
 
-  function placeAutoPlacementGrid(gridLayout, deviceKey, options) {
+  function placeAutoPlacementGrid(gridLayout, deviceKey) {
     let lastSource = null;
     gridLayout.points.forEach((point) => {
       const sourceNumber = project.sources.length + 1;
-      const alternate = options.alternateAzimuth && (point.row + point.column) % 2 === 1;
       lastSource = Model.instantiateDevice(deviceKey, {
         name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
-        azimuth: Model.normalizeAngle(options.baseAzimuth + (alternate ? 180 : 0)),
+        azimuth: 0,
         loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
       });
       project.sources.push(lastSource);
@@ -1268,7 +1265,7 @@
       showToast(`No fully compliant grid was found within ${MAX_AUTO_SOURCES} sources. Best sampled compliance was ${best}%. Review the device data, criteria, orientation, or obstacles.`);
       return;
     }
-    placeAutoPlacementGrid(result.layout, deviceKey, options);
+    placeAutoPlacementGrid(result.layout, deviceKey);
     setPlacementMode(null);
     showToast(`${result.layout.count} sources placed from compliance: ${result.layout.columns} x ${result.layout.rows}, ${round(result.layout.spacingX, 2)} x ${round(result.layout.spacingY, 2)} m spacing, ${round(result.assessment.minimumReserve, 1)} dB minimum reserve across ${result.sampleCount.toLocaleString()} checks.`);
   }
@@ -1287,8 +1284,8 @@
       spacingX: project.autoSpacingX || 12,
       spacingY: project.autoSpacingY || 12,
       designMargin: project.autoDesignMargin ?? 3,
-      baseAzimuth: project.autoBaseAzimuth ?? 0,
-      alternateAzimuth: project.autoAlternateAzimuth !== false,
+      baseAzimuth: 0,
+      alternateAzimuth: false,
       includeExisting: project.autoIncludeExisting !== false,
       maxSources: MAX_AUTO_SOURCES,
     };
@@ -1310,7 +1307,7 @@
     }
     autoPlacementDrag = null;
     setPlacementMode(null);
-    placeAutoPlacementGrid(gridLayout, deviceKey, options);
+    placeAutoPlacementGrid(gridLayout, deviceKey);
     showToast(`${gridLayout.count} manually spaced sources placed in a ${gridLayout.columns} x ${gridLayout.rows} centered grid (${round(gridLayout.spacingX, 2)} x ${round(gridLayout.spacingY, 2)} m).`);
   }
 
@@ -1793,8 +1790,6 @@
       document.getElementById("autoSpacingX").value = project.autoSpacingX || 12;
       document.getElementById("autoSpacingY").value = project.autoSpacingY || 12;
       document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
-      document.getElementById("autoBaseAzimuth").value = project.autoBaseAzimuth ?? 0;
-      document.getElementById("autoAlternateAzimuth").checked = project.autoAlternateAzimuth !== false;
       document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
       updateAutoPlacementMethodUI();
       autoPlaceDialog.showModal();
