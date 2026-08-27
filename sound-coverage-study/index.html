@@ -286,6 +286,7 @@
           </div>
           <span class="object-count" id="objectCount">0</span>
         </div>
+        <p class="microcopy selection-help">Ctrl/Cmd-click or Shift-click objects to select several, then press Delete or use Delete selected.</p>
         <div class="object-list" id="objectList"></div>
       </section>
 
@@ -415,6 +416,20 @@
       <div class="dialog-actions">
         <button class="button ghost" type="button" data-close-dialog>Cancel</button>
         <button class="button primary" id="confirmNewButton" type="button">Create new example</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal compact-modal" id="batchDeleteDialog" aria-labelledby="batchDeleteTitle">
+    <div class="modal-header">
+      <h2 id="batchDeleteTitle">Delete selected objects?</h2>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="batchDeleteMessage">This action cannot be undone.</p>
+      <div class="dialog-actions">
+        <button class="button ghost" type="button" data-close-dialog>Cancel</button>
+        <button class="button danger" id="confirmBatchDeleteButton" type="button">Delete</button>
       </div>
     </div>
   </dialog>

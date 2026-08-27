@@ -20,11 +20,14 @@
   const referencesDialog = document.getElementById("referencesDialog");
   const confirmDialog = document.getElementById("confirmDialog");
   const autoPlaceDialog = document.getElementById("autoPlaceDialog");
+  const batchDeleteDialog = document.getElementById("batchDeleteDialog");
 
   let project = loadProject();
   let grid = null;
   let summary = null;
   let selected = null;
+  const selectedKeys = new Set();
+  let pendingDeleteAction = null;
   let placementMode = null;
   let dragging = null;
   let layout = null;
@@ -88,6 +91,56 @@
     toast.textContent = message;
     toast.classList.add("visible");
     toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 3000);
+  }
+
+  const OBJECT_TYPES = {
+    source: { key: "sources", singular: "source", plural: "sources" },
+    noise: { key: "noiseZones", singular: "noise zone", plural: "noise zones" },
+    obstacle: { key: "obstacles", singular: "obstacle", plural: "obstacles" },
+  };
+
+  function selectionKey(type, id) {
+    return `${type}:${id}`;
+  }
+
+  function selectionHas(type, id) {
+    return selectedKeys.has(selectionKey(type, id));
+  }
+
+  function selectedObjects() {
+    const entries = [];
+    Object.entries(OBJECT_TYPES).forEach(([type, config]) => {
+      (project[config.key] || []).forEach((object) => {
+        if (selectionHas(type, object.id)) entries.push({ type, id: object.id, object });
+      });
+    });
+    return entries;
+  }
+
+  function clearSelection() {
+    selected = null;
+    selectedKeys.clear();
+  }
+
+  function setSingleSelection(next) {
+    clearSelection();
+    if (!next) return;
+    selected = { type: next.type, id: next.id };
+    selectedKeys.add(selectionKey(next.type, next.id));
+  }
+
+  function toggleSelection(next) {
+    const key = selectionKey(next.type, next.id);
+    if (selectedKeys.has(key)) {
+      selectedKeys.delete(key);
+      if (selected && selected.type === next.type && selected.id === next.id) {
+        const remaining = selectedObjects();
+        selected = remaining.length ? { type: remaining[remaining.length - 1].type, id: remaining[remaining.length - 1].id } : null;
+      }
+      return;
+    }
+    selectedKeys.add(key);
+    selected = { type: next.type, id: next.id };
   }
 
   function markChanged({ syncControls = false, refreshInspector = true } = {}) {
@@ -616,7 +669,7 @@
         context.fillStyle = "rgba(59,112,155,0.09)";
         context.fillRect(position.x, position.y, width, height);
       } else {
-        const isSelected = selected && selected.type === "noise" && selected.id === zone.id;
+        const isSelected = selectionHas("noise", zone.id);
         context.strokeStyle = isSelected ? "#174f7c" : "rgba(40,91,130,0.75)";
         context.lineWidth = isSelected ? 2.5 : 1.2;
         context.setLineDash([5, 4]);
@@ -636,7 +689,7 @@
       const position = planToCanvas(obstacle.x, obstacle.y);
       const width = obstacle.width * layout.scale;
       const height = obstacle.depth * layout.scale;
-      const isSelected = selected && selected.type === "obstacle" && selected.id === obstacle.id;
+      const isSelected = selectionHas("obstacle", obstacle.id);
       context.fillStyle = isSelected ? "rgba(36,53,53,0.7)" : "rgba(36,53,53,0.52)";
       context.fillRect(position.x, position.y, width, height);
       context.strokeStyle = isSelected ? "#0b2526" : "rgba(255,255,255,0.72)";
@@ -681,7 +734,7 @@
     for (const source of project.sources || []) {
       const position = planToCanvas(source.x, source.y);
       const handle = rotationHandlePosition(source);
-      const isSelected = selected && selected.type === "source" && selected.id === source.id;
+      const isSelected = selectionHas("source", source.id);
       context.save();
       context.globalAlpha = source.enabled === false ? 0.42 : 1;
       context.strokeStyle = isSelected ? "#0f6669" : "rgba(15,102,105,0.72)";
@@ -784,14 +837,40 @@
   }
 
   function renderInspector() {
-    const object = getSelectedObject();
+    const entries = selectedObjects();
     const title = document.getElementById("inspectorTitle");
     const type = document.getElementById("selectionType");
+    if (entries.length > 1) {
+      const counts = entries.reduce((totals, entry) => {
+        totals[entry.type] += 1;
+        return totals;
+      }, { source: 0, noise: 0, obstacle: 0 });
+      title.textContent = `${entries.length} objects selected`;
+      type.textContent = "Batch selection";
+      inspector.innerHTML = `
+        <div class="batch-selection-summary">
+          <div class="batch-selection-breakdown">
+            <div class="summary-cell"><span>Sources</span><strong>${counts.source}</strong></div>
+            <div class="summary-cell"><span>Noise zones</span><strong>${counts.noise}</strong></div>
+            <div class="summary-cell"><span>Obstacles</span><strong>${counts.obstacle}</strong></div>
+          </div>
+          <p class="microcopy">Ctrl/Cmd-click or Shift-click another object to add or remove it. Click without a modifier to return to single-object editing.</p>
+          <div class="inspector-actions">
+            <button class="button danger" type="button" data-object-action="delete-selected">Delete selected</button>
+          </div>
+        </div>`;
+      scheduleCanvasRender();
+      return;
+    }
+    if (entries.length === 1 && (!selected || !selectionHas(selected.type, selected.id))) {
+      selected = { type: entries[0].type, id: entries[0].id };
+    }
+    const object = getSelectedObject();
     if (!object) {
-      selected = null;
+      clearSelection();
       title.textContent = "Study objects";
       type.textContent = "Overview";
-      inspector.innerHTML = `<div class="empty-selection"><div class="empty-selection-icon">↖</div><strong>Select an object</strong><p>Click a sound source, noise zone, or obstacle to edit its engineering inputs.</p></div>`;
+      inspector.innerHTML = `<div class="empty-selection"><div class="empty-selection-icon">↖</div><strong>Select an object</strong><p>Click an object to edit it, or Ctrl/Cmd-click and Shift-click to select several for deletion.</p></div>`;
       scheduleCanvasRender();
       return;
     }
@@ -906,15 +985,15 @@
     objectList.innerHTML = groups
       .filter((group) => group[2].length)
       .map(([label, type, items]) => `
-        <div class="object-group-label">${label} · ${items.length}</div>
+        <div class="object-group-heading"><div class="object-group-label">${label} · ${items.length}</div><button class="object-group-clear" type="button" data-clear-type="${type}" aria-label="Clear all ${label.toLowerCase()}">Clear all</button></div>
         ${items.map((item) => {
-          const active = selected && selected.type === type && selected.id === item.id;
+          const active = selectionHas(type, item.id);
           const detail = type === "source"
             ? `${round(item.tapPower, item.tapPower % 1 ? 1 : 0)} W · ${escapeHtml(item.loop || "Unassigned")}`
             : type === "noise"
               ? `${round(item.level, 1)} ${escapeHtml(decibelUnit())}`
               : `${round(item.height, 1)} m · −${round(item.loss, 1)} dB`;
-          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false ? "off" : ""}"></i></button>`;
+          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}" aria-pressed="${active}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false ? "off" : ""}"></i></button>`;
         }).join("")}`)
       .join("");
   }
@@ -1010,7 +1089,7 @@
       });
       project.sources.push(lastSource);
     });
-    selected = lastSource ? { type: "source", id: lastSource.id } : selected;
+    if (lastSource) setSingleSelection({ type: "source", id: lastSource.id });
     markChanged();
   }
 
@@ -1128,7 +1207,7 @@
         loop: `L${Math.max(1, Math.ceil((project.sources.length + 1) / 8))}`,
       });
       project.sources.push(source);
-      selected = { type: "source", id: source.id };
+      setSingleSelection({ type: "source", id: source.id });
       showToast(`${source.name} placed.`);
     } else if (type === "noise") {
       const width = Math.min(project.width * 0.25, 30);
@@ -1144,7 +1223,7 @@
         enabled: true,
       };
       project.noiseZones.push(zone);
-      selected = { type: "noise", id: zone.id };
+      setSingleSelection({ type: "noise", id: zone.id });
       showToast("Noise zone added. Edit its size and ambient level in the inspector.");
     } else {
       const width = Math.min(project.width * 0.2, 24);
@@ -1161,7 +1240,7 @@
         enabled: true,
       };
       project.obstacles.push(obstacle);
-      selected = { type: "obstacle", id: obstacle.id };
+      setSingleSelection({ type: "obstacle", id: obstacle.id });
       showToast("Obstacle added. Set a verified insertion loss before issue.");
     }
     setPlacementMode(null);
@@ -1255,14 +1334,70 @@
     mapTooltip.style.top = `${Math.max(8, top)}px`;
   }
 
-  function deleteSelected() {
-    if (!selected) return;
-    const key = selected.type === "source" ? "sources" : selected.type === "noise" ? "noiseZones" : "obstacles";
-    const object = getSelectedObject();
-    project[key] = project[key].filter((item) => item.id !== selected.id);
-    selected = null;
+  function removeSelectedObjects(entries = selectedObjects()) {
+    if (!entries.length) return;
+    Model.removeProjectObjects(project, entries);
+    const count = entries.length;
+    const singleName = count === 1 ? entries[0].object.name : "";
+    clearSelection();
     markChanged();
-    showToast(`${object ? object.name : "Object"} removed.`);
+    showToast(count === 1 ? `${singleName || "Object"} removed.` : `${count} selected objects removed.`);
+  }
+
+  function openDeleteDialog(action) {
+    pendingDeleteAction = action;
+    const title = document.getElementById("batchDeleteTitle");
+    const message = document.getElementById("batchDeleteMessage");
+    const confirmButton = document.getElementById("confirmBatchDeleteButton");
+    if (action.kind === "selection") {
+      title.textContent = `Delete ${action.count} selected objects?`;
+      message.textContent = "The selected sources, noise zones, and obstacles will be removed. This action cannot be undone.";
+      confirmButton.textContent = `Delete ${action.count}`;
+    } else {
+      const config = OBJECT_TYPES[action.type];
+      title.textContent = `Delete all ${config.plural}?`;
+      message.textContent = `All ${action.count} ${config.plural} will be removed from this study. This action cannot be undone.`;
+      confirmButton.textContent = "Clear all";
+    }
+    batchDeleteDialog.showModal();
+  }
+
+  function requestDeleteSelected() {
+    const entries = selectedObjects();
+    if (!entries.length) return;
+    if (entries.length === 1) {
+      removeSelectedObjects(entries);
+      return;
+    }
+    openDeleteDialog({ kind: "selection", count: entries.length });
+  }
+
+  function requestClearType(type) {
+    const config = OBJECT_TYPES[type];
+    const count = config && Array.isArray(project[config.key]) ? project[config.key].length : 0;
+    if (!count) return;
+    openDeleteDialog({ kind: "type", type, count });
+  }
+
+  function confirmPendingDelete() {
+    const action = pendingDeleteAction;
+    if (!action) return;
+    batchDeleteDialog.close();
+    pendingDeleteAction = null;
+    if (action.kind === "selection") {
+      removeSelectedObjects();
+      return;
+    }
+    const config = OBJECT_TYPES[action.type];
+    const count = project[config.key].length;
+    project[config.key] = [];
+    Array.from(selectedKeys).forEach((key) => {
+      if (key.startsWith(`${action.type}:`)) selectedKeys.delete(key);
+    });
+    const remaining = selectedObjects();
+    selected = remaining.length ? { type: remaining[remaining.length - 1].type, id: remaining[remaining.length - 1].id } : null;
+    markChanged();
+    showToast(`${count} ${config.plural} removed.`);
   }
 
   function duplicateSelected() {
@@ -1277,7 +1412,7 @@
       y: Model.clamp(object.y + project.depth * 0.03, 0, project.depth - (object.depth || 0)),
     };
     project[key].push(duplicate);
-    selected = { type: selected.type, id: duplicate.id };
+    setSingleSelection({ type: selected.type, id: duplicate.id });
     markChanged();
     showToast(`${duplicate.name} created.`);
   }
@@ -1351,7 +1486,7 @@
       try {
         const imported = Model.sanitizeProject(JSON.parse(String(reader.result)));
         project = imported;
-        selected = null;
+        clearSelection();
         setPlacementMode(null);
         resetViewZoom();
         syncProjectControls();
@@ -1531,10 +1666,12 @@
         return;
       }
       const hit = hitTest(position);
-      selected = hit ? { type: hit.type, id: hit.id } : null;
+      const additiveSelection = event.ctrlKey || event.metaKey || event.shiftKey;
+      if (hit && additiveSelection) toggleSelection({ type: hit.type, id: hit.id });
+      else if (!additiveSelection) setSingleSelection(hit ? { type: hit.type, id: hit.id } : null);
       renderObjectList();
       renderInspector();
-      if (hit) startDrag(hit, planPoint);
+      if (hit && !additiveSelection) startDrag(hit, planPoint);
       else scheduleCanvasRender();
     });
     canvas.addEventListener("pointermove", (event) => {
@@ -1618,13 +1755,20 @@
     inspector.addEventListener("click", (event) => {
       const button = event.target.closest("[data-object-action]");
       if (!button) return;
-      if (button.dataset.objectAction === "delete") deleteSelected();
+      if (button.dataset.objectAction === "delete" || button.dataset.objectAction === "delete-selected") requestDeleteSelected();
       if (button.dataset.objectAction === "duplicate") duplicateSelected();
     });
     objectList.addEventListener("click", (event) => {
+      const clearButton = event.target.closest("[data-clear-type]");
+      if (clearButton) {
+        requestClearType(clearButton.dataset.clearType);
+        return;
+      }
       const button = event.target.closest("[data-object-id]");
       if (!button) return;
-      selected = { type: button.dataset.objectType, id: button.dataset.objectId };
+      const next = { type: button.dataset.objectType, id: button.dataset.objectId };
+      if (event.ctrlKey || event.metaKey || event.shiftKey) toggleSelection(next);
+      else setSingleSelection(next);
       renderObjectList();
       renderInspector();
     });
@@ -1641,9 +1785,9 @@
         mapTooltip.hidden = true;
         setMeasurementMode(false, { clear: true });
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && selected && !editing) {
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedObjects().length && !editing) {
         event.preventDefault();
-        deleteSelected();
+        requestDeleteSelected();
       }
     });
 
@@ -1679,10 +1823,13 @@
       showToast("Plan background removed.");
     });
 
+    document.getElementById("confirmBatchDeleteButton").addEventListener("click", confirmPendingDelete);
+    batchDeleteDialog.addEventListener("close", () => { pendingDeleteAction = null; });
+
     document.getElementById("newProjectButton").addEventListener("click", () => confirmDialog.showModal());
     document.getElementById("confirmNewButton").addEventListener("click", () => {
       project = Model.createProject(project.mode);
-      selected = null;
+      clearSelection();
       setPlacementMode(null);
       resetViewZoom();
       confirmDialog.close();

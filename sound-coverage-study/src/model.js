@@ -748,6 +748,21 @@
     };
   }
 
+  function removeProjectObjects(project, selections) {
+    if (!project || typeof project !== "object" || !Array.isArray(selections)) return 0;
+    const keys = new Set(selections
+      .filter((selection) => selection && ["source", "noise", "obstacle"].includes(selection.type))
+      .map((selection) => `${selection.type}:${String(selection.id ?? "")}`));
+    let removed = 0;
+    [["source", "sources"], ["noise", "noiseZones"], ["obstacle", "obstacles"]].forEach(([type, property]) => {
+      const items = Array.isArray(project[property]) ? project[property] : [];
+      const retained = items.filter((item) => !keys.has(`${type}:${String(item.id ?? "")}`));
+      removed += items.length - retained.length;
+      project[property] = retained;
+    });
+    return removed;
+  }
+
   function safeText(value, fallback = "", maximumLength = 500) {
     return (typeof value === "string" ? value : String(fallback ?? "")).slice(0, maximumLength);
   }
@@ -912,6 +927,7 @@
     optimizePlacementGrid,
     summarizeGrid,
     summarizeLoops,
+    removeProjectObjects,
     instantiateDevice,
     createProject,
     applyModeCriteria,

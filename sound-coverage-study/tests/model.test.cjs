@@ -208,3 +208,19 @@ test("fixed loss defaults to zero while explicit schema v2 values are preserved"
   assert.equal(Model.createProject("paging").fixedLoss, 0);
   assert.equal(Model.sanitizeProject({ schemaVersion: 2, mode: "paging", fixedLoss: 1 }).fixedLoss, 1);
 });
+
+test("batch removal deletes selected objects across categories only", () => {
+  const project = simpleProject();
+  project.sources = [source({ id: "source-a" }), source({ id: "source-b" })];
+  project.noiseZones = [{ id: "noise-a" }, { id: "noise-b" }];
+  project.obstacles = [{ id: "obstacle-a" }];
+  const removed = Model.removeProjectObjects(project, [
+    { type: "source", id: "source-a" },
+    { type: "noise", id: "noise-b" },
+    { type: "unknown", id: "obstacle-a" },
+  ]);
+  assert.equal(removed, 2);
+  assert.deepEqual(project.sources.map((item) => item.id), ["source-b"]);
+  assert.deepEqual(project.noiseZones.map((item) => item.id), ["noise-a"]);
+  assert.deepEqual(project.obstacles.map((item) => item.id), ["obstacle-a"]);
+});

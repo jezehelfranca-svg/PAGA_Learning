@@ -1226,13 +1226,49 @@ kbd {
   gap: 5px;
 }
 
-.object-group-label {
+.selection-help {
+  margin: 0 0 6px;
+}
+
+.object-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 7px 0 2px;
+}
+
+.object-group-label {
+  margin: 0;
   color: var(--ink-faint);
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.object-group-clear {
+  padding: 2px 4px;
+  border: 0;
+  color: var(--red);
+  background: transparent;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.object-group-clear:hover {
+  text-decoration: underline;
+}
+
+.batch-selection-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.batch-selection-breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .object-row {
