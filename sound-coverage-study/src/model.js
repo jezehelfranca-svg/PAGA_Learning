@@ -748,6 +748,39 @@
     };
   }
 
+  function pointSegmentDistance(point, start, end) {
+    const px = finiteNumber(point && point.x, 0);
+    const py = finiteNumber(point && point.y, 0);
+    const x0 = finiteNumber(start && start.x, 0);
+    const y0 = finiteNumber(start && start.y, 0);
+    const x1 = finiteNumber(end && end.x, x0);
+    const y1 = finiteNumber(end && end.y, y0);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= EPSILON) return Math.hypot(px - x0, py - y0);
+    const position = clamp(((px - x0) * dx + (py - y0) * dy) / lengthSquared, 0, 1);
+    return Math.hypot(px - (x0 + position * dx), py - (y0 + position * dy));
+  }
+
+  function sourceIdsInsideRectangle(sources, rectangle) {
+    const x0 = finiteNumber(rectangle && rectangle.x, 0);
+    const y0 = finiteNumber(rectangle && rectangle.y, 0);
+    const x1 = x0 + finiteNumber(rectangle && rectangle.width, 0);
+    const y1 = y0 + finiteNumber(rectangle && rectangle.depth, 0);
+    const left = Math.min(x0, x1);
+    const right = Math.max(x0, x1);
+    const top = Math.min(y0, y1);
+    const bottom = Math.max(y0, y1);
+    return (Array.isArray(sources) ? sources : [])
+      .filter((source) => {
+        const x = finiteNumber(source && source.x, Infinity);
+        const y = finiteNumber(source && source.y, Infinity);
+        return x >= left && x <= right && y >= top && y <= bottom;
+      })
+      .map((source) => source.id);
+  }
+
   function removeProjectObjects(project, selections) {
     if (!project || typeof project !== "object" || !Array.isArray(selections)) return 0;
     const keys = new Set(selections
@@ -927,6 +960,8 @@
     optimizePlacementGrid,
     summarizeGrid,
     summarizeLoops,
+    pointSegmentDistance,
+    sourceIdsInsideRectangle,
     removeProjectObjects,
     instantiateDevice,
     createProject,

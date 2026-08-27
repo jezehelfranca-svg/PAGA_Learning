@@ -10,6 +10,7 @@
   const MIN_VIEW_ZOOM = 0.5;
   const MAX_VIEW_ZOOM = 8;
   const MAX_AUTO_SOURCES = 500;
+  const SELECTION_BRUSH_RADIUS = 18;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -43,6 +44,7 @@
   let viewPanY = 0;
   let viewPanning = null;
   let autoPlacementDrag = null;
+  let selectionDrag = null;
 
   function loadProject() {
     try {
@@ -342,6 +344,8 @@
     measurementMode = Boolean(active);
     if (measurementMode) {
       placementMode = null;
+      document.getElementById("selectSourcesButton").classList.remove("placing");
+      document.getElementById("selectSourcesButton").setAttribute("aria-pressed", "false");
       document.getElementById("placeSourceButton").classList.remove("placing");
       document.getElementById("addNoiseZoneButton").classList.remove("placing");
       document.getElementById("addObstacleButton").classList.remove("placing");
@@ -355,7 +359,7 @@
     canvas.style.cursor = "";
     document.getElementById("mapHint").textContent = measurementMode
       ? "Measure ; click the first point"
-      : "Drag symbol to move ; drag its round handle to rotate ; hold Shift to snap 15 degrees";
+      : "Select devices to sweep or box-select ; drag symbol to move ; drag its round handle to rotate";
     updateMeasurementReadout();
     scheduleCanvasRender();
   }
@@ -540,6 +544,7 @@
     if (project.showBeams) drawBeams();
     drawSources();
     drawAutoPlacementPreview();
+    drawSelectionPreview();
     context.restore();
 
     context.save();
@@ -1002,14 +1007,19 @@
     placementMode = placementMode === mode ? null : mode;
     if (mode && measurementMode) setMeasurementMode(false, { clear: false });
     if (placementMode !== "autoArea") autoPlacementDrag = null;
+    if (placementMode !== "select") selectionDrag = null;
+    document.getElementById("selectSourcesButton").classList.toggle("placing", placementMode === "select");
+    document.getElementById("selectSourcesButton").setAttribute("aria-pressed", String(placementMode === "select"));
     document.getElementById("placeSourceButton").classList.toggle("placing", placementMode === "source");
     document.getElementById("autoPlaceButton").classList.toggle("placing", placementMode === "autoArea");
     document.getElementById("addNoiseZoneButton").classList.toggle("placing", placementMode === "noise");
     document.getElementById("addObstacleButton").classList.toggle("placing", placementMode === "obstacle");
     canvas.classList.toggle("placing", Boolean(placementMode));
     canvas.style.cursor = "";
-    const label = placementMode === "source"
-      ? "Click the plan to place a sound source"
+    const label = placementMode === "select"
+      ? "Click-hold and sweep over devices, or drag a box around them | Ctrl/Shift adds to the selection | Esc exits"
+      : placementMode === "source"
+        ? "Click the plan to place a sound source"
       : placementMode === "autoArea"
         ? "Drag a rectangle for automatic source placement"
         : placementMode === "noise"
@@ -1032,6 +1042,89 @@
       width: Math.abs(endX - startX),
       depth: Math.abs(endY - startY),
     };
+  }
+
+  function sourceAtCanvasPoint(canvasPoint) {
+    for (let index = project.sources.length - 1; index >= 0; index -= 1) {
+      const source = project.sources[index];
+      const position = planToCanvas(source.x, source.y);
+      if (Math.hypot(canvasPoint.x - position.x, canvasPoint.y - position.y) <= SELECTION_BRUSH_RADIUS) return source;
+    }
+    return null;
+  }
+
+  function addSourceToSelection(source) {
+    if (!source) return false;
+    const key = selectionKey("source", source.id);
+    if (selectedKeys.has(key)) return false;
+    selectedKeys.add(key);
+    selected = { type: "source", id: source.id };
+    return true;
+  }
+
+  function updateBoxSelection(endPoint) {
+    if (!selectionDrag || selectionDrag.mode !== "box") return;
+    selectionDrag.end = endPoint;
+    selectedKeys.clear();
+    selectionDrag.baseKeys.forEach((key) => selectedKeys.add(key));
+    const rectangle = autoPlacementRectangle(selectionDrag.start, selectionDrag.end);
+    const ids = Model.sourceIdsInsideRectangle(project.sources, rectangle);
+    ids.forEach((id) => selectedKeys.add(selectionKey("source", id)));
+    const preferredId = ids.length ? ids[ids.length - 1] : null;
+    const remaining = selectedObjects();
+    selected = preferredId
+      ? { type: "source", id: preferredId }
+      : remaining.length
+        ? { type: remaining[remaining.length - 1].type, id: remaining[remaining.length - 1].id }
+        : null;
+  }
+
+  function sweepSourceSelection(startPoint, endPoint) {
+    let changed = false;
+    project.sources.forEach((source) => {
+      const position = planToCanvas(source.x, source.y);
+      if (Model.pointSegmentDistance(position, startPoint, endPoint) <= SELECTION_BRUSH_RADIUS) {
+        changed = addSourceToSelection(source) || changed;
+      }
+    });
+    return changed;
+  }
+
+  function finishSourceSelectionGesture(position) {
+    if (!selectionDrag) return;
+    if (selectionDrag.mode === "box") updateBoxSelection(canvasToPlan(position.x, position.y));
+    else sweepSourceSelection(selectionDrag.last, position);
+    selectionDrag = null;
+    const count = selectedObjects().filter((entry) => entry.type === "source").length;
+    renderObjectList();
+    renderInspector();
+    scheduleCanvasRender();
+    showToast(count ? `${count} device${count === 1 ? "" : "s"} selected.` : "No devices selected.");
+  }
+
+  function drawSelectionPreview() {
+    if (!selectionDrag || selectionDrag.mode !== "box") return;
+    const rectangle = autoPlacementRectangle(selectionDrag.start, selectionDrag.end);
+    const topLeft = planToCanvas(rectangle.x, rectangle.y);
+    const width = rectangle.width * layout.scale;
+    const height = rectangle.depth * layout.scale;
+    const count = Model.sourceIdsInsideRectangle(project.sources, rectangle).length;
+    context.save();
+    context.fillStyle = "rgba(17,118,112,0.10)";
+    context.strokeStyle = "#157670";
+    context.lineWidth = 1.8;
+    context.setLineDash([6, 4]);
+    context.fillRect(topLeft.x, topLeft.y, width, height);
+    context.strokeRect(topLeft.x, topLeft.y, width, height);
+    context.setLineDash([]);
+    const label = `${count} device${count === 1 ? "" : "s"}`;
+    context.font = "700 11px Segoe UI, sans-serif";
+    const labelWidth = context.measureText(label).width + 14;
+    context.fillStyle = "#0d5b58";
+    context.fillRect(topLeft.x + 5, Math.max(layout.top + 20, topLeft.y + 5), labelWidth, 20);
+    context.fillStyle = "#ffffff";
+    context.fillText(label, topLeft.x + 12, Math.max(layout.top + 35, topLeft.y + 20));
+    context.restore();
   }
 
   function calculateManualPlacementGrid(rect, maximumSpacingX, maximumSpacingY) {
@@ -1583,6 +1676,7 @@
       showToast("Plan fitted to the available workspace.");
     });
 
+    document.getElementById("selectSourcesButton").addEventListener("click", () => setPlacementMode("select"));
     document.getElementById("placeSourceButton").addEventListener("click", () => setPlacementMode("source"));
     document.getElementById("autoPlaceButton").addEventListener("click", () => {
       if (placementMode === "autoArea") {
@@ -1648,6 +1742,23 @@
         scheduleCanvasRender();
         return;
       }
+      if (placementMode === "select") {
+        const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+        const baseKeys = additive ? new Set(selectedKeys) : new Set();
+        if (!additive) clearSelection();
+        const source = sourceAtCanvasPoint(position);
+        if (source) {
+          addSourceToSelection(source);
+          selectionDrag = { mode: "brush", last: position };
+        } else {
+          selectionDrag = { mode: "box", start: planPoint, end: planPoint, baseKeys };
+          updateBoxSelection(planPoint);
+        }
+        renderObjectList();
+        renderInspector();
+        scheduleCanvasRender();
+        return;
+      }
       if (measurementMode) {
         if (!measurement?.start || measurement.complete) {
           measurement = { start: planPoint, end: planPoint, complete: false };
@@ -1682,6 +1793,17 @@
         scheduleCanvasRender();
         return;
       }
+      if (selectionDrag) {
+        canvas.style.cursor = "crosshair";
+        mapTooltip.hidden = true;
+        if (selectionDrag.mode === "box") updateBoxSelection(canvasToPlan(position.x, position.y));
+        else {
+          sweepSourceSelection(selectionDrag.last, position);
+          selectionDrag.last = position;
+        }
+        scheduleCanvasRender();
+        return;
+      }
       if (autoPlacementDrag) {
         autoPlacementDrag.end = canvasToPlan(position.x, position.y);
         scheduleCanvasRender();
@@ -1698,6 +1820,9 @@
           scheduleCanvasRender();
         }
         return;
+      } else if (placementMode === "select") {
+        canvas.style.cursor = "crosshair";
+        mapTooltip.hidden = true;
       } else {
         const hit = placementMode ? null : hitTest(position);
         canvas.style.cursor = hit && hit.part === "rotation" ? "grab" : hit ? "move" : "";
@@ -1709,6 +1834,10 @@
         viewPanning = null;
         canvas.classList.remove("panning");
         canvas.style.cursor = "";
+        return;
+      }
+      if (selectionDrag) {
+        finishSourceSelectionGesture(pointerPosition(event));
         return;
       }
       if (autoPlacementDrag) {
@@ -1730,10 +1859,13 @@
       dragging = null;
       viewPanning = null;
       autoPlacementDrag = null;
+      selectionDrag = null;
       canvas.classList.remove("dragging");
       canvas.classList.remove("rotating");
       canvas.classList.remove("panning");
       canvas.style.cursor = "";
+      renderObjectList();
+      renderInspector();
       scheduleCanvasRender();
     });
     canvas.addEventListener("mousedown", (event) => {

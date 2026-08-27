@@ -224,3 +224,13 @@ test("batch removal deletes selected objects across categories only", () => {
   assert.deepEqual(project.noiseZones.map((item) => item.id), ["noise-a"]);
   assert.deepEqual(project.obstacles.map((item) => item.id), ["obstacle-a"]);
 });
+
+test("selection brush distance covers points along and beyond a segment", () => {
+  assert.equal(Model.pointSegmentDistance({ x: 5, y: 3 }, { x: 0, y: 0 }, { x: 10, y: 0 }), 3);
+  assert.ok(Math.abs(Model.pointSegmentDistance({ x: 13, y: 4 }, { x: 0, y: 0 }, { x: 10, y: 0 }) - 5) < 1e-9);
+});
+
+test("selection rectangle returns device centers inside either drag direction", () => {
+  const sources = [{ id: "a", x: 2, y: 3 }, { id: "b", x: 8, y: 9 }, { id: "c", x: 11, y: 5 }];
+  assert.deepEqual(Model.sourceIdsInsideRectangle(sources, { x: 10, y: 10, width: -10, depth: -10 }), ["a", "b"]);
+});
