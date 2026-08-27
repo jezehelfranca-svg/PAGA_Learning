@@ -265,3 +265,9 @@ test("batch source edits can rotate relative azimuths and update shared engineer
   assert.deepEqual(sources.map((item) => item.loop), ["L3", "L3"]);
   assert.ok(sources.every((item) => item.enabled === false));
 });
+
+test("batch source edits set the same absolute azimuth on every selected source", () => {
+  const sources = [source({ azimuth: 35 }), source({ azimuth: 145 })];
+  Model.applySourceBatchEdits(sources, { azimuthMode: "set", azimuth: 270 });
+  assert.deepEqual(sources.map((item) => item.azimuth), [270, 270]);
+});

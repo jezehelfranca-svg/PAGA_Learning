@@ -850,7 +850,7 @@
     return `
       <form class="inspector-form batch-source-form" data-batch-source-form autocomplete="off">
         <div class="batch-edit-heading"><span>Batch edit</span><strong>${count} source${count === 1 ? "" : "s"}</strong></div>
-        <p class="microcopy">Only completed fields are applied. Position and device names remain unchanged.</p>
+        <p class="microcopy"><b>Set all to</b> azimuth updates when you press Enter or leave the field. Other completed fields use the Apply changes button. Position and device names remain unchanged.</p>
         <div class="section-kicker">Direction & mounting</div>
         <div class="field-grid two">
           <label class="field"><span>Azimuth action</span><select data-batch-azimuth-mode><option value="set">Set all to</option><option value="offset">Rotate each by</option></select></label>
@@ -1634,6 +1634,22 @@
     showToast(`${changedFields.length} field${changedFields.length === 1 ? "" : "s"} applied to ${sources.length} source${sources.length === 1 ? "" : "s"}.`);
   }
 
+  function applyLiveBatchAzimuth(control) {
+    const form = control.closest("[data-batch-source-form]");
+    if (!form || form.querySelector("[data-batch-azimuth-mode]").value !== "set") return;
+    const value = String(control.value ?? "").trim();
+    if (!value) return;
+    if (!control.checkValidity() || !Number.isFinite(Number(value))) {
+      showToast("Enter a valid azimuth from -360° to 360°.");
+      return;
+    }
+    const sources = selectedObjects().filter((entry) => entry.type === "source").map((entry) => entry.object);
+    if (!sources.length) return;
+    Model.applySourceBatchEdits(sources, { azimuthMode: "set", azimuth: Number(value) });
+    markChanged({ refreshInspector: false });
+    showToast(`Azimuth set to ${Model.normalizeAngle(Number(value))}° for ${sources.length} source${sources.length === 1 ? "" : "s"}.`);
+  }
+
   function downloadFile(filename, content, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -1993,6 +2009,7 @@
 
     inspector.addEventListener("change", (event) => {
       if (event.target.matches("[data-object-field]")) updateSelectedField(event.target);
+      if (event.target.matches('[data-batch-source-field="azimuth"]')) applyLiveBatchAzimuth(event.target);
     });
     inspector.addEventListener("input", (event) => {
       if (event.target.matches('[data-object-field][type="range"]')) updateSelectedField(event.target);
