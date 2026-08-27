@@ -1271,6 +1271,41 @@ kbd {
   gap: 7px;
 }
 
+.batch-source-form {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.batch-edit-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.batch-edit-heading span {
+  color: var(--ink-faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.batch-edit-heading strong {
+  color: var(--teal-700);
+  font-size: 11px;
+}
+
+.batch-source-form .microcopy {
+  margin: 0;
+}
+
+.batch-clear-loop {
+  margin-top: -2px;
+}
+
 .object-row {
   display: grid;
   grid-template-columns: 25px minmax(0, 1fr) auto;

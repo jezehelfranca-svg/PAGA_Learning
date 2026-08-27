@@ -841,6 +841,47 @@
     return `<label class="check-row"><input data-object-field="enabled" type="checkbox" ${value !== false ? "checked" : ""}><span>Include this object in the study</span></label>`;
   }
 
+  function batchNumberField(label, key, options = {}) {
+    const { min = 0, max = 10000, step = 0.1, unit = "" } = options;
+    return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="Leave unchanged"></label>`;
+  }
+
+  function renderBatchSourceEditor(count) {
+    if (!count) return "";
+    return `
+      <form class="inspector-form batch-source-form" data-batch-source-form autocomplete="off">
+        <div class="batch-edit-heading"><span>Batch edit</span><strong>${count} source${count === 1 ? "" : "s"}</strong></div>
+        <p class="microcopy">Only completed fields are applied. Position and device names remain unchanged.</p>
+        <div class="section-kicker">Direction & mounting</div>
+        <div class="field-grid two">
+          <label class="field"><span>Azimuth action</span><select data-batch-azimuth-mode><option value="set">Set all to</option><option value="offset">Rotate each by</option></select></label>
+          ${batchNumberField("Azimuth value", "azimuth", { min: -360, max: 360, step: 1, unit: "°" })}
+          ${batchNumberField("Height", "z", { min: 0, max: 1000, step: 0.1, unit: "m" })}
+          ${batchNumberField("Elevation aim", "elevation", { min: -90, max: 90, step: 1, unit: "°" })}
+          ${batchNumberField("Horizontal beam width", "beamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
+          ${batchNumberField("Vertical beam width", "verticalBeamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
+        </div>
+        <div class="section-kicker">Reference condition & power</div>
+        <div class="field-grid two">
+          ${batchNumberField("Reference SPL", "referenceSpl", { min: 0, max: 180, step: 0.1, unit: decibelUnit() })}
+          ${batchNumberField("Reference distance", "referenceDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+          ${batchNumberField("Reference power", "referencePower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumberField("Tap / operating power", "tapPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumberField("Rated power", "ratedPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumberField("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+        </div>
+        <div class="section-kicker">Losses & circuit</div>
+        <div class="field-grid two">
+          ${batchNumberField("Rear attenuation", "rearAttenuation", { min: 0, max: 100, step: 0.5, unit: "dB" })}
+          ${batchNumberField("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
+          <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="Leave unchanged"></label>
+          <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">Leave unchanged</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
+        </div>
+        <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
+        <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
+      </form>`;
+  }
+
   function renderInspector() {
     const entries = selectedObjects();
     const title = document.getElementById("inspectorTitle");
@@ -860,6 +901,7 @@
             <div class="summary-cell"><span>Obstacles</span><strong>${counts.obstacle}</strong></div>
           </div>
           <p class="microcopy">Ctrl/Cmd-click or Shift-click another object to add or remove it. Click without a modifier to return to single-object editing.</p>
+          ${renderBatchSourceEditor(counts.source)}
           <div class="inspector-actions">
             <button class="button danger" type="button" data-object-action="delete-selected">Delete selected</button>
           </div>
@@ -875,7 +917,7 @@
       clearSelection();
       title.textContent = "Study objects";
       type.textContent = "Overview";
-      inspector.innerHTML = `<div class="empty-selection"><div class="empty-selection-icon">↖</div><strong>Select an object</strong><p>Click an object to edit it, or Ctrl/Cmd-click and Shift-click to select several for deletion.</p></div>`;
+      inspector.innerHTML = `<div class="empty-selection"><div class="empty-selection-icon">↖</div><strong>Select an object</strong><p>Click an object to edit it, or use Select devices and modifier-clicks to batch edit or delete several.</p></div>`;
       scheduleCanvasRender();
       return;
     }
@@ -1532,6 +1574,42 @@
     document.getElementById("inspectorTitle").textContent = object.name || "Selected object";
   }
 
+  function applySelectedSourceBatch() {
+    const form = inspector.querySelector("[data-batch-source-form]");
+    if (!form) return;
+    const sources = selectedObjects().filter((entry) => entry.type === "source").map((entry) => entry.object);
+    if (!sources.length) return;
+    const edits = {};
+    let invalidLabel = "";
+    form.querySelectorAll("[data-batch-source-field]").forEach((control) => {
+      const key = control.dataset.batchSourceField;
+      const value = String(control.value ?? "").trim();
+      if (!value) return;
+      if (control.type === "number") {
+        if (!control.checkValidity() || !Number.isFinite(Number(value))) {
+          invalidLabel = invalidLabel || control.closest(".field")?.querySelector("span")?.textContent || key;
+          return;
+        }
+        edits[key] = Number(value);
+      } else if (key === "enabled") edits.enabled = value === "true";
+      else edits[key] = value;
+    });
+    if (invalidLabel) {
+      showToast(`Enter a valid value for ${invalidLabel}.`);
+      return;
+    }
+    if (form.querySelector("[data-batch-clear-loop]").checked) edits.loop = "";
+    if (Object.prototype.hasOwnProperty.call(edits, "azimuth")) edits.azimuthMode = form.querySelector("[data-batch-azimuth-mode]").value;
+    const changedFields = Object.keys(edits).filter((key) => key !== "azimuthMode");
+    if (!changedFields.length) {
+      showToast("Enter at least one batch value to apply.");
+      return;
+    }
+    Model.applySourceBatchEdits(sources, edits);
+    markChanged();
+    showToast(`${changedFields.length} field${changedFields.length === 1 ? "" : "s"} applied to ${sources.length} source${sources.length === 1 ? "" : "s"}.`);
+  }
+
   function downloadFile(filename, content, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -1889,6 +1967,7 @@
       if (!button) return;
       if (button.dataset.objectAction === "delete" || button.dataset.objectAction === "delete-selected") requestDeleteSelected();
       if (button.dataset.objectAction === "duplicate") duplicateSelected();
+      if (button.dataset.objectAction === "apply-source-batch") applySelectedSourceBatch();
     });
     objectList.addEventListener("click", (event) => {
       const clearButton = event.target.closest("[data-clear-type]");

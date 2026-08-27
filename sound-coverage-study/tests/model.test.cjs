@@ -234,3 +234,27 @@ test("selection rectangle returns device centers inside either drag direction", 
   const sources = [{ id: "a", x: 2, y: 3 }, { id: "b", x: 8, y: 9 }, { id: "c", x: 11, y: 5 }];
   assert.deepEqual(Model.sourceIdsInsideRectangle(sources, { x: 10, y: 10, width: -10, depth: -10 }), ["a", "b"]);
 });
+
+test("batch source edits can rotate relative azimuths and update shared engineering fields", () => {
+  const sources = [
+    source({ azimuth: 350, z: 3, tapPower: 25, ratedPower: 25, loop: "L1", enabled: true }),
+    source({ azimuth: 10, z: 4, tapPower: 15, ratedPower: 15, loop: "L2", enabled: true }),
+  ];
+  const changed = Model.applySourceBatchEdits(sources, {
+    azimuthMode: "offset",
+    azimuth: 20,
+    z: 5,
+    ratedPower: 10,
+    tapPower: 12,
+    beamWidth: 90,
+    loop: "L3",
+    enabled: false,
+  });
+  assert.equal(changed, 2);
+  assert.deepEqual(sources.map((item) => item.azimuth), [10, 30]);
+  assert.deepEqual(sources.map((item) => item.z), [5, 5]);
+  assert.deepEqual(sources.map((item) => item.tapPower), [10, 10]);
+  assert.deepEqual(sources.map((item) => item.beamWidth), [90, 90]);
+  assert.deepEqual(sources.map((item) => item.loop), ["L3", "L3"]);
+  assert.ok(sources.every((item) => item.enabled === false));
+});

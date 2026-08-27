@@ -781,6 +781,42 @@
       .map((source) => source.id);
   }
 
+  function applySourceBatchEdits(sources, edits = {}) {
+    const items = (Array.isArray(sources) ? sources : []).filter((source) => source && typeof source === "object");
+    const has = (key) => Object.prototype.hasOwnProperty.call(edits, key);
+    const numericFields = {
+      z: [0, 1000],
+      elevation: [-90, 90],
+      referenceSpl: [0, 180],
+      referenceDistance: [0.001, 10000],
+      referencePower: [0.001, 100000],
+      ratedPower: [0.001, 100000],
+      tapPower: [0.001, 100000],
+      nearFieldDistance: [0.1, 10000],
+      beamWidth: [1, 360],
+      verticalBeamWidth: [1, 360],
+      rearAttenuation: [0, 100],
+      additionalLoss: [0, 100],
+    };
+
+    items.forEach((source) => {
+      if (has("azimuth") && Number.isFinite(Number(edits.azimuth))) {
+        const value = Number(edits.azimuth);
+        source.azimuth = normalizeAngle(edits.azimuthMode === "offset" ? finiteNumber(source.azimuth, 0) + value : value);
+      }
+      Object.entries(numericFields).forEach(([key, [minimum, maximum]]) => {
+        if (!has(key) || !Number.isFinite(Number(edits[key]))) return;
+        source[key] = clamp(Number(edits[key]), minimum, maximum);
+      });
+      if (has("ratedPower") || has("tapPower")) {
+        source.tapPower = Math.min(Math.max(0.001, finiteNumber(source.tapPower, 0.001)), Math.max(0.001, finiteNumber(source.ratedPower, source.tapPower)));
+      }
+      if (has("loop")) source.loop = String(edits.loop ?? "").slice(0, 120);
+      if (has("enabled") && typeof edits.enabled === "boolean") source.enabled = edits.enabled;
+    });
+    return items.length;
+  }
+
   function removeProjectObjects(project, selections) {
     if (!project || typeof project !== "object" || !Array.isArray(selections)) return 0;
     const keys = new Set(selections
@@ -962,6 +998,7 @@
     summarizeLoops,
     pointSegmentDistance,
     sourceIdsInsideRectangle,
+    applySourceBatchEdits,
     removeProjectObjects,
     instantiateDevice,
     createProject,

@@ -19,7 +19,7 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 - PAGING, PA, and ESS acceptance presets traced to the three IFC studies.
 - Interactive receiver-plane heatmap for compliance, sound level, or signal-to-noise margin.
 - Drag-and-place sound sources with a direct rotation handle, live beam feedback, optional 15-degree Shift snapping, and editable horizontal/vertical −6 dB beam inputs.
-- Device selection by click-hold sweep or drag-box, with Ctrl/Cmd or Shift additive selection, confirmed multi-delete, and per-category Clear all actions.
+- Device selection by click-hold sweep or drag-box, with Ctrl/Cmd or Shift additive selection, batch editing of source direction and engineering properties, confirmed multi-delete, and per-category Clear all actions.
 - Rectangular ambient-noise zones and simplified line-of-sight obstacles.
 - Energetic summation of multiple sources.
 - Connected-load and amplifier-headroom schedule by speaker loop.
@@ -52,4 +52,3 @@ The ESS study maps in dBC while also stating a personnel maximum in dBA. The app
 - `Block Diagram PAGA.pdf`
 
 `Acoustic Study.pdf` is preserved in the repository, but its stored bytes do not begin with a PDF signature and standard PDF parsers cannot read it. The app discloses that limitation rather than silently treating it as evidence.
-
