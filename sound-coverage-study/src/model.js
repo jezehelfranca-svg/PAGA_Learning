@@ -82,14 +82,6 @@
       distance: 1,
       weighting: "A",
     },
-    custom: {
-      key: "custom",
-      label: "Use custom project coverage criterion",
-      projectLabel: "Custom project minimum",
-      minimumLevel: null,
-      distance: 1,
-      weighting: "A",
-    },
   });
 
   const DEVICE_PRESETS = Object.freeze({
@@ -758,7 +750,8 @@
       maximumLevel: criteria.maximumLevel,
       enforceMaximum: criteria.enforceMaximum,
       sourceOutputRequirement: "none",
-      minimumSourceOutput: 124,
+      minimumWeatherproofOutput: 124,
+      minimumFlameproofOutput: 119,
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
@@ -911,7 +904,7 @@
   }
 
   function evaluateSourceOutputRequirement(source, project = null) {
-    const sourceKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] && !["none", "custom"].includes(source.outputRequirement)
+    const sourceKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] && source.outputRequirement !== "none"
       ? source.outputRequirement
       : "none";
     const projectKey = project && SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement]
@@ -920,9 +913,12 @@
     const inherited = sourceKey === "none" && projectKey !== "none";
     const requirementKey = sourceKey !== "none" ? sourceKey : projectKey;
     const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey] || SOURCE_OUTPUT_REQUIREMENTS.none;
-    const minimumLevel = inherited
-      ? clamp(finiteNumber(project.minimumSourceOutput, requirement.minimumLevel == null ? 0 : requirement.minimumLevel), 0, 180)
-      : requirement.minimumLevel;
+    let minimumLevel = requirement.minimumLevel;
+    if (project && requirementKey === "outdoorWeatherproof") {
+      minimumLevel = clamp(finiteNumber(project.minimumWeatherproofOutput, requirement.minimumLevel), 0, 180);
+    } else if (project && requirementKey === "outdoorFlameproof") {
+      minimumLevel = clamp(finiteNumber(project.minimumFlameproofOutput, requirement.minimumLevel), 0, 180);
+    }
     const ratedOutput = sourceRatedOutputAtOneMeter(source);
     const applicable = minimumLevel != null;
     const weightingMatches = !applicable || (source && source.weighting) === requirement.weighting;
@@ -1084,6 +1080,10 @@
     const legacyDefaultLoss = inputSchema < 2 && finiteNumber(input.fixedLoss, 1) === 1;
     const weighting = ["A", "C", "Z"].includes(input.weighting) ? input.weighting : fallback.weighting;
     const viewMode = ["compliance", "level", "margin"].includes(input.viewMode) ? input.viewMode : fallback.viewMode;
+    const projectRequirement = ["none", "outdoorWeatherproof", "outdoorFlameproof"].includes(input.sourceOutputRequirement) ? input.sourceOutputRequirement : "none";
+    const legacyMinimum = clamp(finiteNumber(input.minimumSourceOutput, fallback.minimumWeatherproofOutput), 0, 180);
+    const migratedWeatherproofMinimum = ["outdoorWeatherproof", "custom"].includes(input.sourceOutputRequirement) ? legacyMinimum : fallback.minimumWeatherproofOutput;
+    const migratedFlameproofMinimum = ["outdoorFlameproof", "custom"].includes(input.sourceOutputRequirement) ? legacyMinimum : fallback.minimumFlameproofOutput;
     return {
       ...fallback,
       schemaVersion: 2,
@@ -1102,8 +1102,9 @@
       minimumLevel: clamp(finiteNumber(input.minimumLevel, fallback.minimumLevel), 0, 180),
       maximumLevel: clamp(finiteNumber(input.maximumLevel, fallback.maximumLevel), 0, 180),
       enforceMaximum: input.enforceMaximum == null ? fallback.enforceMaximum : Boolean(input.enforceMaximum),
-      sourceOutputRequirement: SOURCE_OUTPUT_REQUIREMENTS[input.sourceOutputRequirement] ? input.sourceOutputRequirement : fallback.sourceOutputRequirement,
-      minimumSourceOutput: clamp(finiteNumber(input.minimumSourceOutput, fallback.minimumSourceOutput), 0, 180),
+      sourceOutputRequirement: projectRequirement,
+      minimumWeatherproofOutput: clamp(finiteNumber(input.minimumWeatherproofOutput, migratedWeatherproofMinimum), 0, 180),
+      minimumFlameproofOutput: clamp(finiteNumber(input.minimumFlameproofOutput, migratedFlameproofMinimum), 0, 180),
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),

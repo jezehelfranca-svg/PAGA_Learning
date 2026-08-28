@@ -390,20 +390,14 @@
 
   function updateSourceOutputRequirementDisplay() {
     const requirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-    const minimumControl = document.getElementById("minimumSourceOutput");
     const note = document.getElementById("sourceOutputRequirementNote");
-    const active = requirement.key !== "none";
-    minimumControl.disabled = !active;
-    if (!active) {
-      note.innerHTML = "No project-wide loudspeaker output minimum is active. Individual source overrides can still be assigned.";
-      return;
-    }
     const results = project.sources.filter((source) => source.enabled !== false).map((source) => Model.evaluateSourceOutputRequirement(source, project));
     const applicable = results.filter((result) => result.applicable);
     const passed = applicable.filter((result) => result.compliant).length;
     const weightingIssues = applicable.filter((result) => !result.weightingMatches).length;
-    const status = applicable.length ? `${passed} of ${applicable.length} active sources pass${weightingIssues ? `; ${weightingIssues} need weighting verification` : ""}.` : "Add sources to evaluate equipment qualification.";
-    note.innerHTML = `<b>${escapeHtml(requirement.projectLabel)}</b> Minimum ${round(project.minimumSourceOutput, 1)} dBA at 1 m, evaluated at rated power. ${escapeHtml(status)} Coverage propagation continues to use tap / operating power.`;
+    const status = applicable.length ? `${passed} of ${applicable.length} classified active sources pass${weightingIssues ? `; ${weightingIssues} need weighting verification` : ""}.` : "Classify sources as weatherproof or flameproof to evaluate them.";
+    const defaultClass = requirement.key === "none" ? "none" : requirement.projectLabel;
+    note.innerHTML = `<b>Project equipment thresholds:</b> Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m, evaluated at rated power. Default source class: ${escapeHtml(defaultClass)}. ${escapeHtml(status)} Coverage propagation continues to use tap / operating power.`;
   }
 
   function updateMetrics() {
@@ -1975,9 +1969,7 @@
     const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     const projectOutputRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-    const projectOutputRequirementText = projectOutputRequirement.key === "none"
-      ? "Not applied"
-      : `${projectOutputRequirement.projectLabel}: ${round(project.minimumSourceOutput, 1)} dBA at 1 m (rated power)`;
+    const projectOutputRequirementText = `Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m (rated power). Default source class: ${projectOutputRequirement.key === "none" ? "none" : projectOutputRequirement.projectLabel}.`;
     report.innerHTML = `
       <div class="print-cover">
         <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}</p></div>
@@ -2007,13 +1999,6 @@
         if (control.type === "checkbox") project[key] = control.checked;
         else if (control.type === "number" || control.type === "range") project[key] = Number(control.value);
         else project[key] = control.value;
-        if (key === "sourceOutputRequirement") {
-          const requirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-          if (requirement.minimumLevel != null) {
-            project.minimumSourceOutput = requirement.minimumLevel;
-            document.getElementById("minimumSourceOutput").value = requirement.minimumLevel;
-          }
-        }
         if (["width", "depth"].includes(key)) {
           project.sources.forEach((source) => {
             source.x = Model.clamp(source.x, 0, project.width);

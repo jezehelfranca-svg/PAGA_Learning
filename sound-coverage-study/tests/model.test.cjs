@@ -160,7 +160,8 @@ test("outdoor loudspeaker requirements evaluate rated output at one meter", () =
 test("project output criteria are inherited, editable, and overridable per source", () => {
   const project = Model.createProject("paging");
   project.sourceOutputRequirement = "outdoorWeatherproof";
-  project.minimumSourceOutput = 126;
+  project.minimumWeatherproofOutput = 126;
+  project.minimumFlameproofOutput = 125;
   const item = source({
     referenceSpl: 105,
     referenceDistance: 1,
@@ -174,22 +175,20 @@ test("project output criteria are inherited, editable, and overridable per sourc
   assert.equal(result.minimumLevel, 126);
   assert.equal(result.compliant, false);
 
-  project.minimumSourceOutput = 124;
+  project.minimumWeatherproofOutput = 124;
   result = Model.evaluateSourceOutputRequirement(item, project);
   assert.equal(result.compliant, true);
 
   item.outputRequirement = "outdoorFlameproof";
   result = Model.evaluateSourceOutputRequirement(item, project);
   assert.equal(result.inherited, false);
+  assert.equal(result.minimumLevel, 125);
+  assert.equal(result.compliant, false);
+
+  project.minimumFlameproofOutput = 119;
+  result = Model.evaluateSourceOutputRequirement(item, project);
   assert.equal(result.minimumLevel, 119);
   assert.equal(result.compliant, true);
-
-  item.outputRequirement = "none";
-  project.sourceOutputRequirement = "custom";
-  project.minimumSourceOutput = 123.5;
-  result = Model.evaluateSourceOutputRequirement(item, project);
-  assert.equal(result.inherited, true);
-  assert.equal(result.minimumLevel, 123.5);
 });
 
 test("grid compliance separates below-target, compliant, and over-limit cells", () => {
@@ -343,18 +342,31 @@ test("source output requirements survive sanitization and reject unknown keys", 
 test("editable project output criteria survive sanitization", () => {
   const project = Model.sanitizeProject({
     mode: "paging",
-    sourceOutputRequirement: "custom",
-    minimumSourceOutput: 127.5,
+    sourceOutputRequirement: "outdoorWeatherproof",
+    minimumWeatherproofOutput: 127.5,
+    minimumFlameproofOutput: 121,
   });
-  assert.equal(project.sourceOutputRequirement, "custom");
-  assert.equal(project.minimumSourceOutput, 127.5);
+  assert.equal(project.sourceOutputRequirement, "outdoorWeatherproof");
+  assert.equal(project.minimumWeatherproofOutput, 127.5);
+  assert.equal(project.minimumFlameproofOutput, 121);
   const rejected = Model.sanitizeProject({
     mode: "paging",
     sourceOutputRequirement: "unknown",
-    minimumSourceOutput: 999,
+    minimumWeatherproofOutput: 999,
+    minimumFlameproofOutput: -10,
   });
   assert.equal(rejected.sourceOutputRequirement, "none");
-  assert.equal(rejected.minimumSourceOutput, 180);
+  assert.equal(rejected.minimumWeatherproofOutput, 180);
+  assert.equal(rejected.minimumFlameproofOutput, 0);
+
+  const migrated = Model.sanitizeProject({
+    mode: "paging",
+    sourceOutputRequirement: "custom",
+    minimumSourceOutput: 126.5,
+  });
+  assert.equal(migrated.sourceOutputRequirement, "none");
+  assert.equal(migrated.minimumWeatherproofOutput, 126.5);
+  assert.equal(migrated.minimumFlameproofOutput, 126.5);
 });
 
 test("batch removal deletes selected objects across categories only", () => {

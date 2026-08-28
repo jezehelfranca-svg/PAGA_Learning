@@ -1996,22 +1996,21 @@ kbd {
         </label>
         <div class="section-kicker">Outdoor loudspeaker equipment</div>
         <label class="field full">
-          <span>Project output requirement</span>
+          <span>Default source class</span>
           <select id="sourceOutputRequirement" data-project-field="sourceOutputRequirement">
-            <option value="none">No project-wide requirement</option>
-            <option value="outdoorWeatherproof">Outdoor weatherproof loudspeakers</option>
-            <option value="outdoorFlameproof">Outdoor flameproof loudspeakers (hazardous areas)</option>
-            <option value="custom">Custom project minimum</option>
+            <option value="none">No default source class</option>
+            <option value="outdoorWeatherproof">Weatherproof for sources using project default</option>
+            <option value="outdoorFlameproof">Flameproof for sources using project default</option>
           </select>
         </label>
         <div class="field-grid two">
           <label class="field">
-            <span>Minimum rated output <b>dBA</b></span>
-            <input id="minimumSourceOutput" data-project-field="minimumSourceOutput" type="number" min="0" max="180" step="0.1">
+            <span>Weatherproof minimum <b>dBA @ 1 m</b></span>
+            <input id="minimumWeatherproofOutput" data-project-field="minimumWeatherproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
           <label class="field">
-            <span>Assessment distance <b>m</b></span>
-            <input type="number" value="1" disabled>
+            <span>Flameproof minimum <b>dBA @ 1 m</b></span>
+            <input id="minimumFlameproofOutput" data-project-field="minimumFlameproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
         </div>
         <div class="source-note" id="sourceOutputRequirementNote"></div>
@@ -2368,14 +2367,6 @@ kbd {
       label: "Outdoor flameproof / hazardous area - 119 dB(A) @ 1 m",
       projectLabel: "Outdoor flameproof loudspeakers (hazardous areas)",
       minimumLevel: 119,
-      distance: 1,
-      weighting: "A",
-    },
-    custom: {
-      key: "custom",
-      label: "Use custom project coverage criterion",
-      projectLabel: "Custom project minimum",
-      minimumLevel: null,
       distance: 1,
       weighting: "A",
     },
@@ -3047,7 +3038,8 @@ kbd {
       maximumLevel: criteria.maximumLevel,
       enforceMaximum: criteria.enforceMaximum,
       sourceOutputRequirement: "none",
-      minimumSourceOutput: 124,
+      minimumWeatherproofOutput: 124,
+      minimumFlameproofOutput: 119,
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
@@ -3200,7 +3192,7 @@ kbd {
   }
 
   function evaluateSourceOutputRequirement(source, project = null) {
-    const sourceKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] && !["none", "custom"].includes(source.outputRequirement)
+    const sourceKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] && source.outputRequirement !== "none"
       ? source.outputRequirement
       : "none";
     const projectKey = project && SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement]
@@ -3209,9 +3201,12 @@ kbd {
     const inherited = sourceKey === "none" && projectKey !== "none";
     const requirementKey = sourceKey !== "none" ? sourceKey : projectKey;
     const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey] || SOURCE_OUTPUT_REQUIREMENTS.none;
-    const minimumLevel = inherited
-      ? clamp(finiteNumber(project.minimumSourceOutput, requirement.minimumLevel == null ? 0 : requirement.minimumLevel), 0, 180)
-      : requirement.minimumLevel;
+    let minimumLevel = requirement.minimumLevel;
+    if (project && requirementKey === "outdoorWeatherproof") {
+      minimumLevel = clamp(finiteNumber(project.minimumWeatherproofOutput, requirement.minimumLevel), 0, 180);
+    } else if (project && requirementKey === "outdoorFlameproof") {
+      minimumLevel = clamp(finiteNumber(project.minimumFlameproofOutput, requirement.minimumLevel), 0, 180);
+    }
     const ratedOutput = sourceRatedOutputAtOneMeter(source);
     const applicable = minimumLevel != null;
     const weightingMatches = !applicable || (source && source.weighting) === requirement.weighting;
@@ -3373,6 +3368,10 @@ kbd {
     const legacyDefaultLoss = inputSchema < 2 && finiteNumber(input.fixedLoss, 1) === 1;
     const weighting = ["A", "C", "Z"].includes(input.weighting) ? input.weighting : fallback.weighting;
     const viewMode = ["compliance", "level", "margin"].includes(input.viewMode) ? input.viewMode : fallback.viewMode;
+    const projectRequirement = ["none", "outdoorWeatherproof", "outdoorFlameproof"].includes(input.sourceOutputRequirement) ? input.sourceOutputRequirement : "none";
+    const legacyMinimum = clamp(finiteNumber(input.minimumSourceOutput, fallback.minimumWeatherproofOutput), 0, 180);
+    const migratedWeatherproofMinimum = ["outdoorWeatherproof", "custom"].includes(input.sourceOutputRequirement) ? legacyMinimum : fallback.minimumWeatherproofOutput;
+    const migratedFlameproofMinimum = ["outdoorFlameproof", "custom"].includes(input.sourceOutputRequirement) ? legacyMinimum : fallback.minimumFlameproofOutput;
     return {
       ...fallback,
       schemaVersion: 2,
@@ -3391,8 +3390,9 @@ kbd {
       minimumLevel: clamp(finiteNumber(input.minimumLevel, fallback.minimumLevel), 0, 180),
       maximumLevel: clamp(finiteNumber(input.maximumLevel, fallback.maximumLevel), 0, 180),
       enforceMaximum: input.enforceMaximum == null ? fallback.enforceMaximum : Boolean(input.enforceMaximum),
-      sourceOutputRequirement: SOURCE_OUTPUT_REQUIREMENTS[input.sourceOutputRequirement] ? input.sourceOutputRequirement : fallback.sourceOutputRequirement,
-      minimumSourceOutput: clamp(finiteNumber(input.minimumSourceOutput, fallback.minimumSourceOutput), 0, 180),
+      sourceOutputRequirement: projectRequirement,
+      minimumWeatherproofOutput: clamp(finiteNumber(input.minimumWeatherproofOutput, migratedWeatherproofMinimum), 0, 180),
+      minimumFlameproofOutput: clamp(finiteNumber(input.minimumFlameproofOutput, migratedFlameproofMinimum), 0, 180),
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
@@ -3870,20 +3870,14 @@ kbd {
 
   function updateSourceOutputRequirementDisplay() {
     const requirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-    const minimumControl = document.getElementById("minimumSourceOutput");
     const note = document.getElementById("sourceOutputRequirementNote");
-    const active = requirement.key !== "none";
-    minimumControl.disabled = !active;
-    if (!active) {
-      note.innerHTML = "No project-wide loudspeaker output minimum is active. Individual source overrides can still be assigned.";
-      return;
-    }
     const results = project.sources.filter((source) => source.enabled !== false).map((source) => Model.evaluateSourceOutputRequirement(source, project));
     const applicable = results.filter((result) => result.applicable);
     const passed = applicable.filter((result) => result.compliant).length;
     const weightingIssues = applicable.filter((result) => !result.weightingMatches).length;
-    const status = applicable.length ? `${passed} of ${applicable.length} active sources pass${weightingIssues ? `; ${weightingIssues} need weighting verification` : ""}.` : "Add sources to evaluate equipment qualification.";
-    note.innerHTML = `<b>${escapeHtml(requirement.projectLabel)}</b> Minimum ${round(project.minimumSourceOutput, 1)} dBA at 1 m, evaluated at rated power. ${escapeHtml(status)} Coverage propagation continues to use tap / operating power.`;
+    const status = applicable.length ? `${passed} of ${applicable.length} classified active sources pass${weightingIssues ? `; ${weightingIssues} need weighting verification` : ""}.` : "Classify sources as weatherproof or flameproof to evaluate them.";
+    const defaultClass = requirement.key === "none" ? "none" : requirement.projectLabel;
+    note.innerHTML = `<b>Project equipment thresholds:</b> Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m, evaluated at rated power. Default source class: ${escapeHtml(defaultClass)}. ${escapeHtml(status)} Coverage propagation continues to use tap / operating power.`;
   }
 
   function updateMetrics() {
@@ -5455,9 +5449,7 @@ kbd {
     const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     const projectOutputRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-    const projectOutputRequirementText = projectOutputRequirement.key === "none"
-      ? "Not applied"
-      : `${projectOutputRequirement.projectLabel}: ${round(project.minimumSourceOutput, 1)} dBA at 1 m (rated power)`;
+    const projectOutputRequirementText = `Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m (rated power). Default source class: ${projectOutputRequirement.key === "none" ? "none" : projectOutputRequirement.projectLabel}.`;
     report.innerHTML = `
       <div class="print-cover">
         <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}</p></div>
@@ -5487,13 +5479,6 @@ kbd {
         if (control.type === "checkbox") project[key] = control.checked;
         else if (control.type === "number" || control.type === "range") project[key] = Number(control.value);
         else project[key] = control.value;
-        if (key === "sourceOutputRequirement") {
-          const requirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-          if (requirement.minimumLevel != null) {
-            project.minimumSourceOutput = requirement.minimumLevel;
-            document.getElementById("minimumSourceOutput").value = requirement.minimumLevel;
-          }
-        }
         if (["width", "depth"].includes(key)) {
           project.sources.forEach((source) => {
             source.x = Model.clamp(source.x, 0, project.width);
