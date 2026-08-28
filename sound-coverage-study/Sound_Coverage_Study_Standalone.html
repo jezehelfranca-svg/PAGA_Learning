@@ -1234,6 +1234,12 @@ kbd {
   background: var(--green-soft);
 }
 
+.provenance-note.failed {
+  border-color: #e4c6c8;
+  color: var(--red);
+  background: var(--red-soft);
+}
+
 .inspector-actions {
   display: flex;
   gap: 7px;
@@ -2319,6 +2325,30 @@ kbd {
     },
   });
 
+  const SOURCE_OUTPUT_REQUIREMENTS = Object.freeze({
+    none: {
+      key: "none",
+      label: "No project-specific minimum",
+      minimumLevel: null,
+      distance: 1,
+      weighting: "A",
+    },
+    outdoorWeatherproof: {
+      key: "outdoorWeatherproof",
+      label: "Outdoor weatherproof - 124 dB(A) @ 1 m",
+      minimumLevel: 124,
+      distance: 1,
+      weighting: "A",
+    },
+    outdoorFlameproof: {
+      key: "outdoorFlameproof",
+      label: "Outdoor flameproof / hazardous area - 119 dB(A) @ 1 m",
+      minimumLevel: 119,
+      distance: 1,
+      weighting: "A",
+    },
+  });
+
   const DEVICE_PRESETS = Object.freeze({
     horn25: {
       key: "horn25",
@@ -2926,6 +2956,7 @@ kbd {
       weighting: preset.weighting,
       confidence: preset.confidence,
       provenance: preset.provenance,
+      outputRequirement: "none",
       loop: "L1",
       enabled: true,
       ...overrides,
@@ -3097,6 +3128,9 @@ kbd {
         source.tapPower = Math.min(Math.max(0.001, finiteNumber(source.tapPower, 0.001)), Math.max(0.001, finiteNumber(source.ratedPower, source.tapPower)));
       }
       if (has("loop")) source.loop = String(edits.loop ?? "").slice(0, 120);
+      if (has("outputRequirement") && SOURCE_OUTPUT_REQUIREMENTS[edits.outputRequirement]) {
+        source.outputRequirement = edits.outputRequirement;
+      }
       if (has("enabled") && typeof edits.enabled === "boolean") source.enabled = edits.enabled;
     });
     return items.length;
@@ -3120,6 +3154,29 @@ kbd {
       hasRatedPower,
       tapPower: hasTapPower ? Number(edits.tapPower) : null,
       ratedPower: hasRatedPower ? Number(edits.ratedPower) : null,
+    };
+  }
+
+  function sourceRatedOutputAtOneMeter(source) {
+    const referenceSpl = finiteNumber(source && source.referenceSpl, 0);
+    const referenceDistance = Math.max(EPSILON, finiteNumber(source && source.referenceDistance, 1));
+    const referencePower = Math.max(EPSILON, finiteNumber(source && source.referencePower, 1));
+    const ratedPower = Math.max(EPSILON, finiteNumber(source && source.ratedPower, referencePower));
+    return referenceSpl + 10 * Math.log10(ratedPower / referencePower) - 20 * Math.log10(1 / referenceDistance);
+  }
+
+  function evaluateSourceOutputRequirement(source) {
+    const requirementKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] ? source.outputRequirement : "none";
+    const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey];
+    const ratedOutput = sourceRatedOutputAtOneMeter(source);
+    const applicable = requirement.minimumLevel != null;
+    const weightingMatches = !applicable || (source && source.weighting) === requirement.weighting;
+    return {
+      ...requirement,
+      applicable,
+      ratedOutput,
+      weightingMatches,
+      compliant: applicable && weightingMatches && ratedOutput + EPSILON >= requirement.minimumLevel,
     };
   }
 
@@ -3213,6 +3270,7 @@ kbd {
       weighting,
       confidence: base.confidence,
       provenance: safeText(value.provenance, base.provenance, 2000),
+      outputRequirement: SOURCE_OUTPUT_REQUIREMENTS[value.outputRequirement] ? value.outputRequirement : "none",
       loop: safeText(value.loop, base.loop, 120),
       enabled: value.enabled !== false,
     };
@@ -3327,6 +3385,7 @@ kbd {
   }
   return Object.freeze({
     MODE_CRITERIA,
+    SOURCE_OUTPUT_REQUIREMENTS,
     DEVICE_PRESETS,
     MAX_GRID_CELLS,
     MAX_AUTO_SAMPLES,
@@ -3359,6 +3418,8 @@ kbd {
     sourceIdsInsideRectangle,
     applySourceBatchEdits,
     validateSourceBatchPower,
+    sourceRatedOutputAtOneMeter,
+    evaluateSourceOutputRequirement,
     clampGroupTranslation,
     resizeRectangle,
     removeProjectObjects,
@@ -4277,6 +4338,13 @@ kbd {
     return `<label class="check-row"><input data-object-field="enabled" type="checkbox" ${value !== false ? "checked" : ""}><span>Include this object in the study</span></label>`;
   }
 
+  function sourceOutputRequirementOptions(selectedKey, { includeUnchanged = false, unchangedLabel = "Leave unchanged" } = {}) {
+    const options = Object.values(Model.SOURCE_OUTPUT_REQUIREMENTS)
+      .map((requirement) => `<option value="${escapeHtml(requirement.key)}" ${requirement.key === selectedKey ? "selected" : ""}>${escapeHtml(requirement.label)}</option>`)
+      .join("");
+    return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}${options}`;
+  }
+
   function batchNumberField(label, key, options = {}) {
     const { min = 0, max = 10000, step = 0.1, unit = "", placeholder = "Leave unchanged" } = options;
     return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="${escapeHtml(placeholder)}"></label>`;
@@ -4307,6 +4375,9 @@ kbd {
     const loopPlaceholder = batchSourcePlaceholder(sources, "loop");
     const enabledState = commonBatchValue(sources, "enabled");
     const enabledPlaceholder = enabledState.mixed ? "Mixed - leave unchanged" : enabledState.value === false ? "Current: excluded" : "Current: included";
+    const requirementState = commonBatchValue(sources, "outputRequirement");
+    const currentRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[requirementState.value] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
+    const requirementPlaceholder = requirementState.mixed ? "Mixed - leave unchanged" : `Current: ${currentRequirement.label}`;
     return `
       <form class="inspector-form batch-source-form" data-batch-source-form autocomplete="off">
         <div class="batch-edit-heading"><span>Batch edit</span><strong>${count} source${count === 1 ? "" : "s"}</strong></div>
@@ -4335,6 +4406,7 @@ kbd {
           ${batchNumber("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
           <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
           <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">${escapeHtml(enabledPlaceholder)}</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
+          <label class="field full"><span>Outdoor output requirement</span><select data-batch-source-field="outputRequirement">${sourceOutputRequirementOptions("", { includeUnchanged: true, unchangedLabel: requirementPlaceholder })}</select></label>
         </div>
         <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
         <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
@@ -4393,6 +4465,15 @@ kbd {
     const output = source.referenceSpl + 10 * Math.log10(Math.max(1e-9, source.tapPower) / Math.max(1e-9, source.referencePower));
     const weightingMismatch = source.weighting && source.weighting !== project.weighting;
     const badgeClass = source.confidence === "sourced" ? "sourced" : "";
+    const outputRequirement = Model.evaluateSourceOutputRequirement(source);
+    let requirementNote = "";
+    if (outputRequirement.applicable) {
+      const statusClass = outputRequirement.compliant ? "sourced" : outputRequirement.weightingMatches ? "failed" : "";
+      const statusText = outputRequirement.compliant ? "Requirement passed." : outputRequirement.weightingMatches ? "Below requirement." : "Cannot verify requirement.";
+      const comparison = `${round(outputRequirement.ratedOutput, 1)} dB${escapeHtml(source.weighting || "")} calculated rated output at 1 m versus ${round(outputRequirement.minimumLevel, 1)} dB${escapeHtml(outputRequirement.weighting)} minimum.`;
+      const explanation = outputRequirement.weightingMatches ? comparison : `${comparison} The source and requirement weightings must match.`;
+      requirementNote = `<div class="provenance-note ${statusClass}"><b>${statusText}</b> ${explanation} This equipment qualification uses rated power; the coverage study continues to use tap / operating power.</div>`;
+    }
     inspector.innerHTML = `
       <form class="inspector-form" autocomplete="off">
         ${textField("Tag / name", "name", source.name, { full: true })}
@@ -4401,6 +4482,9 @@ kbd {
           <div class="summary-cell"><span>Tap output</span><strong>${round(output, 1)} ${escapeHtml(decibelUnit())}</strong></div>
           <div class="summary-cell"><span>Confidence</span><strong>${source.confidence === "sourced" ? "Sourced" : source.confidence === "user" ? "User" : "Verify"}</strong></div>
         </div>
+        <div class="section-kicker">Equipment qualification</div>
+        <label class="field full"><span>Outdoor output requirement</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
+        ${requirementNote}
         <div class="field-grid two">
           ${numberField("X", "x", source.x, { min: 0, max: project.width, step: 0.1, unit: "m" })}
           ${numberField("Y", "y", source.y, { min: 0, max: project.depth, step: 0.1, unit: "m" })}
@@ -5151,7 +5235,8 @@ kbd {
       }
     }
     const refreshNoiseTarget = selected.type === "noise" && ["level", "requiredMargin", "minimumLevel"].includes(key);
-    markChanged({ refreshInspector: control.type === "checkbox" || refreshNoiseTarget });
+    const refreshSourceOutput = selected.type === "source" && ["outputRequirement", "referenceSpl", "referenceDistance", "referencePower", "ratedPower"].includes(key);
+    markChanged({ refreshInspector: control.type === "checkbox" || refreshNoiseTarget || refreshSourceOutput });
     document.getElementById("inspectorTitle").textContent = object.name || "Selected object";
   }
 
@@ -5289,7 +5374,15 @@ kbd {
     const criteria = Model.MODE_CRITERIA[project.mode] || Model.MODE_CRITERIA.paging;
     const loops = Model.summarizeLoops(project);
     const image = canvas.toDataURL("image/png");
-    const sourceRows = project.sources.map((source) => `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`).join("");
+    const sourceRows = project.sources.map((source) => {
+      const requirement = Model.evaluateSourceOutputRequirement(source);
+      const requirementStatus = !requirement.applicable
+        ? "Not assigned"
+        : !requirement.weightingMatches
+          ? `Verify weighting: ${round(requirement.ratedOutput, 1)} dB${source.weighting || ""}`
+          : `${requirement.compliant ? "Pass" : "Fail"}: ${round(requirement.ratedOutput, 1)} / ${round(requirement.minimumLevel, 1)} dBA @ 1 m`;
+      return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
+    }).join("");
     const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     report.innerHTML = `
@@ -5310,7 +5403,7 @@ kbd {
         <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Absolute minimum</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
         <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
-      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="8">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
+      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="9">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
   }
 
   function bindEvents() {

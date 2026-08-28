@@ -1224,6 +1224,12 @@ kbd {
   background: var(--green-soft);
 }
 
+.provenance-note.failed {
+  border-color: #e4c6c8;
+  color: var(--red);
+  background: var(--red-soft);
+}
+
 .inspector-actions {
   display: flex;
   gap: 7px;

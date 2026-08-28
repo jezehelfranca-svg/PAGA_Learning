@@ -57,6 +57,30 @@
     },
   });
 
+  const SOURCE_OUTPUT_REQUIREMENTS = Object.freeze({
+    none: {
+      key: "none",
+      label: "No project-specific minimum",
+      minimumLevel: null,
+      distance: 1,
+      weighting: "A",
+    },
+    outdoorWeatherproof: {
+      key: "outdoorWeatherproof",
+      label: "Outdoor weatherproof - 124 dB(A) @ 1 m",
+      minimumLevel: 124,
+      distance: 1,
+      weighting: "A",
+    },
+    outdoorFlameproof: {
+      key: "outdoorFlameproof",
+      label: "Outdoor flameproof / hazardous area - 119 dB(A) @ 1 m",
+      minimumLevel: 119,
+      distance: 1,
+      weighting: "A",
+    },
+  });
+
   const DEVICE_PRESETS = Object.freeze({
     horn25: {
       key: "horn25",
@@ -664,6 +688,7 @@
       weighting: preset.weighting,
       confidence: preset.confidence,
       provenance: preset.provenance,
+      outputRequirement: "none",
       loop: "L1",
       enabled: true,
       ...overrides,
@@ -835,6 +860,9 @@
         source.tapPower = Math.min(Math.max(0.001, finiteNumber(source.tapPower, 0.001)), Math.max(0.001, finiteNumber(source.ratedPower, source.tapPower)));
       }
       if (has("loop")) source.loop = String(edits.loop ?? "").slice(0, 120);
+      if (has("outputRequirement") && SOURCE_OUTPUT_REQUIREMENTS[edits.outputRequirement]) {
+        source.outputRequirement = edits.outputRequirement;
+      }
       if (has("enabled") && typeof edits.enabled === "boolean") source.enabled = edits.enabled;
     });
     return items.length;
@@ -858,6 +886,29 @@
       hasRatedPower,
       tapPower: hasTapPower ? Number(edits.tapPower) : null,
       ratedPower: hasRatedPower ? Number(edits.ratedPower) : null,
+    };
+  }
+
+  function sourceRatedOutputAtOneMeter(source) {
+    const referenceSpl = finiteNumber(source && source.referenceSpl, 0);
+    const referenceDistance = Math.max(EPSILON, finiteNumber(source && source.referenceDistance, 1));
+    const referencePower = Math.max(EPSILON, finiteNumber(source && source.referencePower, 1));
+    const ratedPower = Math.max(EPSILON, finiteNumber(source && source.ratedPower, referencePower));
+    return referenceSpl + 10 * Math.log10(ratedPower / referencePower) - 20 * Math.log10(1 / referenceDistance);
+  }
+
+  function evaluateSourceOutputRequirement(source) {
+    const requirementKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] ? source.outputRequirement : "none";
+    const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey];
+    const ratedOutput = sourceRatedOutputAtOneMeter(source);
+    const applicable = requirement.minimumLevel != null;
+    const weightingMatches = !applicable || (source && source.weighting) === requirement.weighting;
+    return {
+      ...requirement,
+      applicable,
+      ratedOutput,
+      weightingMatches,
+      compliant: applicable && weightingMatches && ratedOutput + EPSILON >= requirement.minimumLevel,
     };
   }
 
@@ -951,6 +1002,7 @@
       weighting,
       confidence: base.confidence,
       provenance: safeText(value.provenance, base.provenance, 2000),
+      outputRequirement: SOURCE_OUTPUT_REQUIREMENTS[value.outputRequirement] ? value.outputRequirement : "none",
       loop: safeText(value.loop, base.loop, 120),
       enabled: value.enabled !== false,
     };
@@ -1065,6 +1117,7 @@
   }
   return Object.freeze({
     MODE_CRITERIA,
+    SOURCE_OUTPUT_REQUIREMENTS,
     DEVICE_PRESETS,
     MAX_GRID_CELLS,
     MAX_AUTO_SAMPLES,
@@ -1097,6 +1150,8 @@
     sourceIdsInsideRectangle,
     applySourceBatchEdits,
     validateSourceBatchPower,
+    sourceRatedOutputAtOneMeter,
+    evaluateSourceOutputRequirement,
     clampGroupTranslation,
     resizeRectangle,
     removeProjectObjects,

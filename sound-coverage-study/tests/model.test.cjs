@@ -125,6 +125,38 @@ test("the sourced siren profile returns 118 dBC at its 30 m reference", () => {
   assert.ok(Math.abs(result - 118) < 0.001);
 });
 
+test("outdoor loudspeaker requirements evaluate rated output at one meter", () => {
+  const weatherproof = source({
+    referenceSpl: 105,
+    referenceDistance: 1,
+    referencePower: 1,
+    ratedPower: 80,
+    weighting: "A",
+    outputRequirement: "outdoorWeatherproof",
+  });
+  const weatherproofResult = Model.evaluateSourceOutputRequirement(weatherproof);
+  assert.ok(Math.abs(weatherproofResult.ratedOutput - 124.0309) < 0.001);
+  assert.equal(weatherproofResult.minimumLevel, 124);
+  assert.equal(weatherproofResult.compliant, true);
+
+  const flameproof = source({
+    referenceSpl: 105,
+    referenceDistance: 1,
+    referencePower: 1,
+    ratedPower: 20,
+    weighting: "A",
+    outputRequirement: "outdoorFlameproof",
+  });
+  const flameproofResult = Model.evaluateSourceOutputRequirement(flameproof);
+  assert.equal(flameproofResult.minimumLevel, 119);
+  assert.equal(flameproofResult.compliant, false);
+
+  flameproof.weighting = "C";
+  const mismatchResult = Model.evaluateSourceOutputRequirement(flameproof);
+  assert.equal(mismatchResult.weightingMatches, false);
+  assert.equal(mismatchResult.compliant, false);
+});
+
 test("grid compliance separates below-target, compliant, and over-limit cells", () => {
   const project = simpleProject();
   project.width = 8;
@@ -260,6 +292,19 @@ test("fixed loss defaults to zero while explicit schema v2 values are preserved"
   assert.equal(Model.sanitizeProject({ schemaVersion: 2, mode: "paging", fixedLoss: 1 }).fixedLoss, 1);
 });
 
+test("source output requirements survive sanitization and reject unknown keys", () => {
+  const preserved = Model.sanitizeProject({
+    mode: "paging",
+    sources: [{ presetKey: "custom", outputRequirement: "outdoorWeatherproof" }],
+  });
+  assert.equal(preserved.sources[0].outputRequirement, "outdoorWeatherproof");
+  const rejected = Model.sanitizeProject({
+    mode: "paging",
+    sources: [{ presetKey: "custom", outputRequirement: "not-a-requirement" }],
+  });
+  assert.equal(rejected.sources[0].outputRequirement, "none");
+});
+
 test("batch removal deletes selected objects across categories only", () => {
   const project = simpleProject();
   project.sources = [source({ id: "source-a" }), source({ id: "source-b" })];
@@ -341,6 +386,12 @@ test("valid batch tap power is applied to every selected source", () => {
   assert.equal(Model.validateSourceBatchPower(sources, { tapPower: 18 }).valid, true);
   Model.applySourceBatchEdits(sources, { tapPower: 18 });
   assert.deepEqual(sources.map((item) => item.tapPower), [18, 18]);
+});
+
+test("batch source edits assign an outdoor output requirement", () => {
+  const sources = [source(), source()];
+  Model.applySourceBatchEdits(sources, { outputRequirement: "outdoorFlameproof" });
+  assert.deepEqual(sources.map((item) => item.outputRequirement), ["outdoorFlameproof", "outdoorFlameproof"]);
 });
 
 test("group translation is clamped by the outermost selected object", () => {
