@@ -419,6 +419,25 @@ test("batch source edits can rotate relative azimuths and update shared engineer
   assert.ok(sources.every((item) => item.enabled === false));
 });
 
+test("single source power edits retain tap changes and reconcile rated power", () => {
+  const item = source({ tapPower: 25, ratedPower: 25 });
+  let result = Model.applySourcePowerEdit(item, "tapPower", 50);
+  assert.equal(item.tapPower, 50);
+  assert.equal(item.ratedPower, 50);
+  assert.equal(result.ratedRaised, true);
+
+  result = Model.applySourcePowerEdit(item, "tapPower", 10);
+  assert.equal(item.tapPower, 10);
+  assert.equal(item.ratedPower, 50);
+  assert.equal(result.ratedRaised, false);
+
+  Model.applySourcePowerEdit(item, "tapPower", 40);
+  result = Model.applySourcePowerEdit(item, "ratedPower", 20);
+  assert.equal(item.ratedPower, 20);
+  assert.equal(item.tapPower, 20);
+  assert.equal(result.tapReduced, true);
+});
+
 test("batch source edits set the same absolute azimuth on every selected source", () => {
   const sources = [source({ azimuth: 35 }), source({ azimuth: 145 })];
   Model.applySourceBatchEdits(sources, { azimuthMode: "set", azimuth: 270 });

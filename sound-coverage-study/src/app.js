@@ -1815,15 +1815,19 @@
     if (!object) return;
     const key = control.dataset.objectField;
     const optionalNoiseField = selected.type === "noise" && ["requiredMargin", "minimumLevel"].includes(key);
-    if (control.type === "checkbox") object[key] = control.checked;
-    else if (optionalNoiseField && String(control.value).trim() === "") object[key] = null;
-    else if (control.type === "number" || control.type === "range") object[key] = Number(control.value);
-    else object[key] = control.value;
+    const sourcePowerField = selected.type === "source" && ["tapPower", "ratedPower"].includes(key);
+    const powerAdjustment = sourcePowerField ? Model.applySourcePowerEdit(object, key, Number(control.value)) : null;
+    if (!sourcePowerField) {
+      if (control.type === "checkbox") object[key] = control.checked;
+      else if (optionalNoiseField && String(control.value).trim() === "") object[key] = null;
+      else if (control.type === "number" || control.type === "range") object[key] = Number(control.value);
+      else object[key] = control.value;
+    }
     if (selected.type === "source") {
       object.x = Model.clamp(Number(object.x), 0, project.width);
       object.y = Model.clamp(Number(object.y), 0, project.depth);
       object.azimuth = Model.normalizeAngle(object.azimuth);
-      object.tapPower = Math.min(Math.max(0.001, Number(object.tapPower)), Math.max(0.001, Number(object.ratedPower) || object.tapPower));
+      if (!sourcePowerField) object.tapPower = Math.min(Math.max(0.001, Number(object.tapPower)), Math.max(0.001, Number(object.ratedPower) || object.tapPower));
     } else {
       object.width = Model.clamp(Number(object.width), 0.1, project.width);
       object.depth = Model.clamp(Number(object.depth), 0.1, project.depth);
@@ -1835,9 +1839,14 @@
       }
     }
     const refreshNoiseTarget = selected.type === "noise" && ["level", "requiredMargin", "minimumLevel"].includes(key);
-    const refreshSourceOutput = selected.type === "source" && ["outputRequirement", "referenceSpl", "referenceDistance", "referencePower", "ratedPower"].includes(key);
+    const refreshSourceOutput = selected.type === "source" && ["outputRequirement", "referenceSpl", "referenceDistance", "referencePower", "tapPower", "ratedPower"].includes(key);
     markChanged({ refreshInspector: control.type === "checkbox" || refreshNoiseTarget || refreshSourceOutput });
     document.getElementById("inspectorTitle").textContent = object.name || "Selected object";
+    if (powerAdjustment && powerAdjustment.ratedRaised) {
+      showToast(`Rated power increased to ${round(powerAdjustment.ratedPower, 3)} W so the requested operating tap remains valid.`);
+    } else if (powerAdjustment && powerAdjustment.tapReduced) {
+      showToast(`Operating tap reduced to ${round(powerAdjustment.tapPower, 3)} W to match the lower rated power.`);
+    }
   }
 
   function applySelectedSourceBatch() {

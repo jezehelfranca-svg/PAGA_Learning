@@ -835,6 +835,35 @@
       .map((source) => source.id);
   }
 
+  function applySourcePowerEdit(source, key, value) {
+    if (!source || typeof source !== "object" || !["tapPower", "ratedPower"].includes(key)) {
+      return { changed: false, ratedRaised: false, tapReduced: false };
+    }
+    const nextValue = clamp(finiteNumber(value, 0.001), 0.001, 100000);
+    let ratedRaised = false;
+    let tapReduced = false;
+    if (key === "tapPower") {
+      source.tapPower = nextValue;
+      const ratedPower = clamp(finiteNumber(source.ratedPower, nextValue), 0.001, 100000);
+      if (nextValue > ratedPower + EPSILON) {
+        source.ratedPower = nextValue;
+        ratedRaised = true;
+      } else {
+        source.ratedPower = ratedPower;
+      }
+    } else {
+      source.ratedPower = nextValue;
+      const tapPower = clamp(finiteNumber(source.tapPower, nextValue), 0.001, 100000);
+      if (tapPower > nextValue + EPSILON) {
+        source.tapPower = nextValue;
+        tapReduced = true;
+      } else {
+        source.tapPower = tapPower;
+      }
+    }
+    return { changed: true, ratedRaised, tapReduced, tapPower: source.tapPower, ratedPower: source.ratedPower };
+  }
+
   function applySourceBatchEdits(sources, edits = {}) {
     const items = (Array.isArray(sources) ? sources : []).filter((source) => source && typeof source === "object");
     const has = (key) => Object.prototype.hasOwnProperty.call(edits, key);
@@ -1176,6 +1205,7 @@
     summarizeLoops,
     pointSegmentDistance,
     sourceIdsInsideRectangle,
+    applySourcePowerEdit,
     applySourceBatchEdits,
     validateSourceBatchPower,
     sourceRatedOutputAtOneMeter,
