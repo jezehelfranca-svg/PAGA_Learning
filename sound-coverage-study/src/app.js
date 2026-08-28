@@ -922,7 +922,18 @@
   function sourceOutputRequirementOptions(selectedKey, { includeUnchanged = false, unchangedLabel = "Leave unchanged" } = {}) {
     const options = Object.values(Model.SOURCE_OUTPUT_REQUIREMENTS)
       .filter((requirement) => requirement.key !== "custom")
-      .map((requirement) => `<option value="${escapeHtml(requirement.key)}" ${requirement.key === selectedKey ? "selected" : ""}>${escapeHtml(requirement.label)}</option>`)
+      .map((requirement) => {
+        let label = requirement.label;
+        if (requirement.key === "none") {
+          const projectDefault = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
+          label = projectDefault.key === "none" ? "Use project default - unclassified" : `Use project default - ${projectDefault.projectLabel}`;
+        } else if (requirement.key === "outdoorWeatherproof") {
+          label = `Weatherproof - ${round(project.minimumWeatherproofOutput, 1)} dBA @ 1 m`;
+        } else if (requirement.key === "outdoorFlameproof") {
+          label = `Flameproof / hazardous area - ${round(project.minimumFlameproofOutput, 1)} dBA @ 1 m`;
+        }
+        return `<option value="${escapeHtml(requirement.key)}" ${requirement.key === selectedKey ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
       .join("");
     return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}${options}`;
   }
@@ -959,7 +970,11 @@
     const enabledPlaceholder = enabledState.mixed ? "Mixed - leave unchanged" : enabledState.value === false ? "Current: excluded" : "Current: included";
     const requirementState = commonBatchValue(sources, "outputRequirement");
     const currentRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[requirementState.value] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
-    const requirementPlaceholder = requirementState.mixed ? "Mixed - leave unchanged" : `Current: ${currentRequirement.label}`;
+    const projectDefault = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
+    const currentRequirementLabel = currentRequirement.key === "none"
+      ? projectDefault.key === "none" ? "Use project default - unclassified" : `Use project default - ${projectDefault.projectLabel}`
+      : currentRequirement.projectLabel;
+    const requirementPlaceholder = requirementState.mixed ? "Mixed - leave unchanged" : `Current: ${currentRequirementLabel}`;
     return `
       <form class="inspector-form batch-source-form" data-batch-source-form autocomplete="off">
         <div class="batch-edit-heading"><span>Batch edit</span><strong>${count} source${count === 1 ? "" : "s"}</strong></div>
@@ -988,7 +1003,7 @@
           ${batchNumber("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
           <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
           <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">${escapeHtml(enabledPlaceholder)}</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
-          <label class="field full"><span>Project requirement override</span><select data-batch-source-field="outputRequirement">${sourceOutputRequirementOptions("", { includeUnchanged: true, unchangedLabel: requirementPlaceholder })}</select></label>
+          <label class="field full"><span>Loudspeaker class</span><select data-batch-source-field="outputRequirement">${sourceOutputRequirementOptions("", { includeUnchanged: true, unchangedLabel: requirementPlaceholder })}</select></label>
         </div>
         <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
         <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
@@ -1052,10 +1067,12 @@
     if (outputRequirement.applicable) {
       const statusClass = outputRequirement.compliant ? "sourced" : outputRequirement.weightingMatches ? "failed" : "";
       const statusText = outputRequirement.compliant ? "Requirement passed." : outputRequirement.weightingMatches ? "Below requirement." : "Cannot verify requirement.";
-      const requirementScope = outputRequirement.inherited ? "Project criterion." : "Source override.";
+      const requirementScope = `${outputRequirement.projectLabel}${outputRequirement.inherited ? " (project default)." : " (source selection)."}`;
       const comparison = `${round(outputRequirement.ratedOutput, 1)} dB${escapeHtml(source.weighting || "")} calculated rated output at 1 m versus ${round(outputRequirement.minimumLevel, 1)} dB${escapeHtml(outputRequirement.weighting)} minimum.`;
       const explanation = outputRequirement.weightingMatches ? comparison : `${comparison} The source and requirement weightings must match.`;
       requirementNote = `<div class="provenance-note ${statusClass}"><b>${statusText}</b> ${requirementScope} ${explanation} This equipment qualification uses rated power; the coverage study continues to use tap / operating power.</div>`;
+    } else {
+      requirementNote = `<div class="provenance-note"><b>Source is unclassified.</b> Select Weatherproof or Flameproof, or choose a Default source class in Coverage criteria.</div>`;
     }
     inspector.innerHTML = `
       <form class="inspector-form" autocomplete="off">
@@ -1066,7 +1083,7 @@
           <div class="summary-cell"><span>Confidence</span><strong>${source.confidence === "sourced" ? "Sourced" : source.confidence === "user" ? "User" : "Verify"}</strong></div>
         </div>
         <div class="section-kicker">Equipment qualification</div>
-        <label class="field full"><span>Project requirement override</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
+        <label class="field full"><span>Loudspeaker class</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
         ${requirementNote}
         <div class="field-grid two">
           ${numberField("X", "x", source.x, { min: 0, max: project.width, step: 0.1, unit: "m" })}
@@ -1962,8 +1979,8 @@
       const requirementStatus = !requirement.applicable
         ? "Not assigned"
         : !requirement.weightingMatches
-          ? `Verify weighting: ${round(requirement.ratedOutput, 1)} dB${source.weighting || ""}`
-          : `${requirement.compliant ? "Pass" : "Fail"}: ${round(requirement.ratedOutput, 1)} / ${round(requirement.minimumLevel, 1)} dBA @ 1 m`;
+          ? `${requirement.projectLabel} - verify weighting: ${round(requirement.ratedOutput, 1)} dB${source.weighting || ""}`
+          : `${requirement.projectLabel} - ${requirement.compliant ? "Pass" : "Fail"}: ${round(requirement.ratedOutput, 1)} / ${round(requirement.minimumLevel, 1)} dBA @ 1 m`;
       return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
     }).join("");
     const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
