@@ -294,19 +294,40 @@
     );
   }
 
-  function noiseAtPoint(project, x, y) {
+  function pointIsInsideNoiseZone(zone, x, y) {
+    return (
+      x >= finiteNumber(zone.x, 0) &&
+      y >= finiteNumber(zone.y, 0) &&
+      x <= finiteNumber(zone.x, 0) + Math.max(0, finiteNumber(zone.width, 0)) &&
+      y <= finiteNumber(zone.y, 0) + Math.max(0, finiteNumber(zone.depth, 0))
+    );
+  }
+
+  function targetForNoiseZone(project, zone) {
+    const ambient = finiteNumber(zone && zone.level, finiteNumber(project.ambientLevel, 0));
+    const margin = zone && zone.requiredMargin != null && zone.requiredMargin !== ""
+      ? Math.max(0, finiteNumber(zone.requiredMargin, finiteNumber(project.requiredMargin, 0)))
+      : Math.max(0, finiteNumber(project.requiredMargin, 0));
+    const minimum = zone && zone.minimumLevel != null && zone.minimumLevel !== ""
+      ? finiteNumber(zone.minimumLevel, finiteNumber(project.minimumLevel, 0))
+      : finiteNumber(project.minimumLevel, 0);
+    return Math.max(minimum, ambient + margin);
+  }
+
+  function noiseRequirementAtPoint(project, x, y) {
     let ambient = finiteNumber(project.ambientLevel, 0);
+    let target = targetForNoise(project, ambient);
     const zones = Array.isArray(project.noiseZones) ? project.noiseZones : [];
     for (const zone of zones) {
-      if (zone.enabled === false) continue;
-      const inside =
-        x >= finiteNumber(zone.x, 0) &&
-        y >= finiteNumber(zone.y, 0) &&
-        x <= finiteNumber(zone.x, 0) + Math.max(0, finiteNumber(zone.width, 0)) &&
-        y <= finiteNumber(zone.y, 0) + Math.max(0, finiteNumber(zone.depth, 0));
-      if (inside) ambient = Math.max(ambient, finiteNumber(zone.level, ambient));
+      if (zone.enabled === false || !pointIsInsideNoiseZone(zone, x, y)) continue;
+      ambient = Math.max(ambient, finiteNumber(zone.level, ambient));
+      target = Math.max(target, targetForNoiseZone(project, zone));
     }
-    return ambient;
+    return { ambient, target };
+  }
+
+  function noiseAtPoint(project, x, y) {
+    return noiseRequirementAtPoint(project, x, y).ambient;
   }
 
   function targetForNoise(project, ambient) {
@@ -320,8 +341,9 @@
     const sources = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false) : [];
     const levels = sources.map((source) => sourceLevelAtPoint(project, source, x, y));
     const level = energeticSum(levels);
-    const ambient = noiseAtPoint(project, x, y);
-    const target = targetForNoise(project, ambient);
+    const requirement = noiseRequirementAtPoint(project, x, y);
+    const ambient = requirement.ambient;
+    const target = requirement.target;
     const margin = Number.isFinite(level) ? level - ambient : -Infinity;
     const enforceMaximum = Boolean(project.enforceMaximum);
     const maximum = finiteNumber(project.maximumLevel, Infinity);
@@ -921,6 +943,14 @@
       width: clamp(finiteNumber(value.width, 10), 0.1, Math.max(0.1, projectWidth - x)),
       depth: clamp(finiteNumber(value.depth, 10), 0.1, Math.max(0.1, projectDepth - y)),
       level: clamp(finiteNumber(value.level, 60), 0, 180),
+      requiredMargin:
+        value.requiredMargin == null || value.requiredMargin === ""
+          ? null
+          : clamp(finiteNumber(value.requiredMargin, 0), 0, 100),
+      minimumLevel:
+        value.minimumLevel == null || value.minimumLevel === ""
+          ? null
+          : clamp(finiteNumber(value.minimumLevel, 0), 0, 180),
       enabled: value.enabled !== false,
     };
   }
@@ -1027,6 +1057,8 @@
     sourceLevelAtPoint,
     noiseAtPoint,
     targetForNoise,
+    targetForNoiseZone,
+    noiseRequirementAtPoint,
     calculatePoint,
     calculateGrid,
     createPlacementGrid,

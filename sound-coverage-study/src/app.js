@@ -885,8 +885,8 @@
   }
 
   function numberField(label, key, value, options = {}) {
-    const { min = 0, max = 10000, step = 0.1, unit = "" } = options;
-    return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-object-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" value="${escapeHtml(value)}"></label>`;
+    const { min = 0, max = 10000, step = 0.1, unit = "", placeholder = "" } = options;
+    return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-object-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" value="${escapeHtml(value)}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""}></label>`;
   }
 
   function textField(label, key, value, options = {}) {
@@ -1043,7 +1043,12 @@
           ${numberField("Depth", "depth", zone.depth, { min: 0.1, max: project.depth, step: 0.1, unit: "m" })}
           ${numberField("Ambient level", "level", zone.level, { min: 0, max: 180, step: 0.5, unit: decibelUnit() })}
         </div>
-        <div class="provenance-note sourced">Zones override the project ambient level inside their rectangle. When zones overlap, the highest active level controls conservatively.</div>
+        <div class="section-kicker">Compliance override</div>
+        <div class="field-grid two">
+          ${numberField("Required margin", "requiredMargin", zone.requiredMargin ?? "", { min: 0, max: 100, step: 0.5, unit: "dB", placeholder: "Project default" })}
+          ${numberField("Minimum target", "minimumLevel", zone.minimumLevel ?? "", { min: 0, max: 180, step: 0.5, unit: decibelUnit(), placeholder: "Project default" })}
+        </div>
+        <div class="provenance-note sourced">Zones override the project ambient level inside their rectangle. Leave compliance fields blank to inherit project criteria. When zones overlap, the most demanding active target is used.</div>
         ${enabledField(zone.enabled)}
         <div class="inspector-actions">
           <button class="button" type="button" data-object-action="duplicate">Duplicate</button>
@@ -1716,7 +1721,9 @@
     const object = getSelectedObject();
     if (!object) return;
     const key = control.dataset.objectField;
+    const optionalNoiseField = selected.type === "noise" && ["requiredMargin", "minimumLevel"].includes(key);
     if (control.type === "checkbox") object[key] = control.checked;
+    else if (optionalNoiseField && String(control.value).trim() === "") object[key] = null;
     else if (control.type === "number" || control.type === "range") object[key] = Number(control.value);
     else object[key] = control.value;
     if (selected.type === "source") {
@@ -1729,6 +1736,10 @@
       object.depth = Model.clamp(Number(object.depth), 0.1, project.depth);
       object.x = Model.clamp(Number(object.x), 0, project.width - object.width);
       object.y = Model.clamp(Number(object.y), 0, project.depth - object.depth);
+      if (selected.type === "noise") {
+        if (object.requiredMargin != null) object.requiredMargin = Model.clamp(Number(object.requiredMargin), 0, 100);
+        if (object.minimumLevel != null) object.minimumLevel = Model.clamp(Number(object.minimumLevel), 0, 180);
+      }
     }
     markChanged({ refreshInspector: control.type === "checkbox" });
     document.getElementById("inspectorTitle").textContent = object.name || "Selected object";

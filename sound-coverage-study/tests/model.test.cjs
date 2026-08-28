@@ -65,6 +65,36 @@ test("ambient zones override the project background and set the margin target", 
   assert.equal(Model.targetForNoise(project, 75), 85);
 });
 
+test("noise zones can override compliance margin and minimum target", () => {
+  const project = simpleProject();
+  project.ambientLevel = 50;
+  project.minimumLevel = 60;
+  project.requiredMargin = 10;
+  project.noiseZones = [
+    { x: 0, y: 0, width: 5, depth: 5, level: 70, requiredMargin: 5, enabled: true },
+    { x: 5, y: 0, width: 5, depth: 5, level: 80, requiredMargin: 15, minimumLevel: 100, enabled: true },
+  ];
+
+  assert.equal(Model.targetForNoiseZone(project, project.noiseZones[0]), 75);
+  assert.equal(Model.calculatePoint(project, 2, 2).target, 75);
+  assert.equal(Model.calculatePoint(project, 7, 2).target, 100);
+});
+
+test("overlapping noise zones use the most demanding active target", () => {
+  const project = simpleProject();
+  project.ambientLevel = 50;
+  project.minimumLevel = 60;
+  project.requiredMargin = 10;
+  project.noiseZones = [
+    { x: 0, y: 0, width: 8, depth: 8, level: 70, requiredMargin: 5, enabled: true },
+    { x: 2, y: 2, width: 8, depth: 8, level: 65, requiredMargin: 40, enabled: true },
+  ];
+
+  const requirement = Model.noiseRequirementAtPoint(project, 4, 4);
+  assert.equal(requirement.ambient, 70);
+  assert.equal(requirement.target, 105);
+});
+
 test("a line-of-sight obstacle applies its insertion loss", () => {
   const project = simpleProject();
   const item = source({ x: 0, y: 10, z: 2 });
@@ -191,7 +221,7 @@ test("project sanitization clamps nested objects, strips unknown keys, and migra
     fixedLoss: 1,
     unknownTopLevel: "discard",
     sources: [{ presetKey: "custom", x: -5, y: 99, tapPower: 1e300, beamWidth: 999, verticalBeamWidth: 0, confidence: "sourced", unknown: true }],
-    noiseZones: [{ x: -10, y: 0, width: 999, depth: 999, level: 999, unknown: true }],
+    noiseZones: [{ x: -10, y: 0, width: 999, depth: 999, level: 999, requiredMargin: 999, minimumLevel: -10, unknown: true }],
     obstacles: [{ x: 19.95, y: 9.95, width: 999, depth: 999, height: 1e9, loss: -10, unknown: true }],
   });
   assert.equal(project.schemaVersion, 2);
@@ -205,6 +235,8 @@ test("project sanitization clamps nested objects, strips unknown keys, and migra
   assert.equal(project.sources[0].confidence, "user");
   assert.equal("unknown" in project.sources[0], false);
   assert.equal(project.noiseZones[0].level, 180);
+  assert.equal(project.noiseZones[0].requiredMargin, 100);
+  assert.equal(project.noiseZones[0].minimumLevel, 0);
   assert.equal("unknown" in project.noiseZones[0], false);
   assert.equal(project.obstacles[0].height, 1000);
   assert.equal(project.obstacles[0].loss, 0);
