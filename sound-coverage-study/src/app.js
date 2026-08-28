@@ -907,40 +907,63 @@
   }
 
   function batchNumberField(label, key, options = {}) {
-    const { min = 0, max = 10000, step = 0.1, unit = "" } = options;
-    return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="Leave unchanged"></label>`;
+    const { min = 0, max = 10000, step = 0.1, unit = "", placeholder = "Leave unchanged" } = options;
+    return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="${escapeHtml(placeholder)}"></label>`;
   }
 
-  function renderBatchSourceEditor(count) {
+  function commonBatchValue(sources, key) {
+    const values = sources.map((source) => source[key]);
+    if (!values.length) return { mixed: true, value: null };
+    const first = values[0];
+    return { mixed: values.some((value) => value !== first), value: first };
+  }
+
+  function batchSourcePlaceholder(sources, key, unit = "") {
+    const current = commonBatchValue(sources, key);
+    if (current.mixed) return "Mixed - leave unchanged";
+    if (key === "loop") return `Current: ${current.value || "Unassigned"}`;
+    const value = Number.isFinite(Number(current.value)) ? round(Number(current.value), 3) : current.value;
+    return `Current: ${value}${unit ? ` ${unit}` : ""}`;
+  }
+
+  function renderBatchSourceEditor(sources) {
+    const count = sources.length;
     if (!count) return "";
+    const batchNumber = (label, key, options = {}) => batchNumberField(label, key, {
+      ...options,
+      placeholder: batchSourcePlaceholder(sources, key, options.unit),
+    });
+    const loopPlaceholder = batchSourcePlaceholder(sources, "loop");
+    const enabledState = commonBatchValue(sources, "enabled");
+    const enabledPlaceholder = enabledState.mixed ? "Mixed - leave unchanged" : enabledState.value === false ? "Current: excluded" : "Current: included";
     return `
       <form class="inspector-form batch-source-form" data-batch-source-form autocomplete="off">
         <div class="batch-edit-heading"><span>Batch edit</span><strong>${count} source${count === 1 ? "" : "s"}</strong></div>
-        <p class="microcopy"><b>Set all to</b> azimuth updates when you press Enter or leave the field. Other completed fields use the Apply changes button. Position and device names remain unchanged.</p>
+        <p class="microcopy">Enter values only for the fields you want to change, then press Enter or <b>Apply changes</b>. Blank fields keep their current values. Position and device names remain unchanged.</p>
         <div class="section-kicker">Direction & mounting</div>
         <div class="field-grid two">
           <label class="field"><span>Azimuth action</span><select data-batch-azimuth-mode><option value="set">Set all to</option><option value="offset">Rotate each by</option></select></label>
-          ${batchNumberField("Azimuth value", "azimuth", { min: -360, max: 360, step: 1, unit: "°" })}
-          ${batchNumberField("Height", "z", { min: 0, max: 1000, step: 0.1, unit: "m" })}
-          ${batchNumberField("Elevation aim", "elevation", { min: -90, max: 90, step: 1, unit: "°" })}
-          ${batchNumberField("Horizontal beam width", "beamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
-          ${batchNumberField("Vertical beam width", "verticalBeamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
+          ${batchNumber("Azimuth value", "azimuth", { min: -360, max: 360, step: 1, unit: "°" })}
+          ${batchNumber("Height", "z", { min: 0, max: 1000, step: 0.1, unit: "m" })}
+          ${batchNumber("Elevation aim", "elevation", { min: -90, max: 90, step: 1, unit: "°" })}
+          ${batchNumber("Horizontal beam width", "beamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
+          ${batchNumber("Vertical beam width", "verticalBeamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
         </div>
         <div class="section-kicker">Reference condition & power</div>
         <div class="field-grid two">
-          ${batchNumberField("Reference SPL", "referenceSpl", { min: 0, max: 180, step: 0.1, unit: decibelUnit() })}
-          ${batchNumberField("Reference distance", "referenceDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
-          ${batchNumberField("Reference power", "referencePower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
-          ${batchNumberField("Tap / operating power", "tapPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
-          ${batchNumberField("Rated power", "ratedPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
-          ${batchNumberField("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+          ${batchNumber("Reference SPL", "referenceSpl", { min: 0, max: 180, step: 0.1, unit: decibelUnit() })}
+          ${batchNumber("Reference distance", "referenceDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+          ${batchNumber("Reference power", "referencePower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumber("Tap / operating power", "tapPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumber("Rated power", "ratedPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumber("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
         </div>
         <div class="section-kicker">Losses & circuit</div>
         <div class="field-grid two">
-          ${batchNumberField("Rear attenuation", "rearAttenuation", { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          ${batchNumberField("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="Leave unchanged"></label>
-          <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">Leave unchanged</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
+          ${batchNumber("Rear attenuation", "rearAttenuation", { min: 0, max: 100, step: 0.5, unit: "dB" })}
+          ${batchNumber("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
+          <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
+          <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">${escapeHtml(enabledPlaceholder)}</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
         </div>
         <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
         <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
@@ -966,7 +989,7 @@
             <div class="summary-cell"><span>Obstacles</span><strong>${counts.obstacle}</strong></div>
           </div>
           <p class="microcopy">Ctrl/Cmd-click or Shift-click another object to add or remove it. Click without a modifier to return to single-object editing.</p>
-          ${renderBatchSourceEditor(counts.source)}
+          ${renderBatchSourceEditor(entries.filter((entry) => entry.type === "source").map((entry) => entry.object))}
           <div class="inspector-actions">
             <button class="button danger" type="button" data-object-action="delete-selected">Delete selected</button>
           </div>
@@ -1792,6 +1815,18 @@
       showToast("Enter at least one batch value to apply.");
       return;
     }
+    const powerValidation = Model.validateSourceBatchPower(sources, edits);
+    if (!powerValidation.valid) {
+      const count = powerValidation.violationCount;
+      if (powerValidation.hasTapPower && !powerValidation.hasRatedPower) {
+        showToast(`Tap / operating power exceeds the existing rated power for ${count} selected source${count === 1 ? "" : "s"}. Enter a sufficient Rated power in the same batch.`);
+      } else if (!powerValidation.hasTapPower && powerValidation.hasRatedPower) {
+        showToast(`Rated power is below the existing tap power for ${count} selected source${count === 1 ? "" : "s"}. Enter a lower Tap / operating power in the same batch.`);
+      } else {
+        showToast("Tap / operating power cannot exceed Rated power.");
+      }
+      return;
+    }
     Model.applySourceBatchEdits(sources, edits);
     markChanged();
     showToast(`${changedFields.length} field${changedFields.length === 1 ? "" : "s"} applied to ${sources.length} source${sources.length === 1 ? "" : "s"}.`);
@@ -2207,6 +2242,11 @@
     });
     inspector.addEventListener("input", (event) => {
       if (event.target.matches('[data-object-field][type="range"]')) updateSelectedField(event.target);
+    });
+    inspector.addEventListener("submit", (event) => {
+      if (!event.target.matches("[data-batch-source-form]")) return;
+      event.preventDefault();
+      applySelectedSourceBatch();
     });
     inspector.addEventListener("click", (event) => {
       const button = event.target.closest("[data-object-action]");

@@ -840,6 +840,27 @@
     return items.length;
   }
 
+  function validateSourceBatchPower(sources, edits = {}) {
+    const items = (Array.isArray(sources) ? sources : []).filter((source) => source && typeof source === "object");
+    const has = (key) => Object.prototype.hasOwnProperty.call(edits, key) && Number.isFinite(Number(edits[key]));
+    const hasTapPower = has("tapPower");
+    const hasRatedPower = has("ratedPower");
+    if (!hasTapPower && !hasRatedPower) return { valid: true, violationCount: 0, hasTapPower, hasRatedPower };
+    const violations = items.filter((source) => {
+      const tapPower = hasTapPower ? Number(edits.tapPower) : finiteNumber(source.tapPower, 0.001);
+      const ratedPower = hasRatedPower ? Number(edits.ratedPower) : finiteNumber(source.ratedPower, tapPower);
+      return tapPower > ratedPower + EPSILON;
+    });
+    return {
+      valid: violations.length === 0,
+      violationCount: violations.length,
+      hasTapPower,
+      hasRatedPower,
+      tapPower: hasTapPower ? Number(edits.tapPower) : null,
+      ratedPower: hasRatedPower ? Number(edits.ratedPower) : null,
+    };
+  }
+
   function clampGroupTranslation(items, deltaX, deltaY, planWidth, planDepth) {
     const objects = (Array.isArray(items) ? items : []).filter((item) => item && typeof item === "object");
     if (!objects.length) return { x: 0, y: 0 };
@@ -1075,6 +1096,7 @@
     pointSegmentDistance,
     sourceIdsInsideRectangle,
     applySourceBatchEdits,
+    validateSourceBatchPower,
     clampGroupTranslation,
     resizeRectangle,
     removeProjectObjects,

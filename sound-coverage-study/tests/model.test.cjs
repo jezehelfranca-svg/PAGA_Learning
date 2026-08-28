@@ -316,6 +316,33 @@ test("batch source edits set the same absolute azimuth on every selected source"
   assert.deepEqual(sources.map((item) => item.azimuth), [270, 270]);
 });
 
+test("batch power validation detects tap and rated power conflicts", () => {
+  const sources = [
+    source({ tapPower: 10, ratedPower: 20 }),
+    source({ tapPower: 15, ratedPower: 15 }),
+  ];
+  assert.deepEqual(Model.validateSourceBatchPower(sources, { tapPower: 18 }), {
+    valid: false,
+    violationCount: 1,
+    hasTapPower: true,
+    hasRatedPower: false,
+    tapPower: 18,
+    ratedPower: null,
+  });
+  assert.equal(Model.validateSourceBatchPower(sources, { tapPower: 25, ratedPower: 30 }).valid, true);
+  assert.equal(Model.validateSourceBatchPower(sources, { ratedPower: 12 }).violationCount, 1);
+});
+
+test("valid batch tap power is applied to every selected source", () => {
+  const sources = [
+    source({ tapPower: 10, ratedPower: 20 }),
+    source({ tapPower: 15, ratedPower: 30 }),
+  ];
+  assert.equal(Model.validateSourceBatchPower(sources, { tapPower: 18 }).valid, true);
+  Model.applySourceBatchEdits(sources, { tapPower: 18 });
+  assert.deepEqual(sources.map((item) => item.tapPower), [18, 18]);
+});
+
 test("group translation is clamped by the outermost selected object", () => {
   const delta = Model.clampGroupTranslation([
     { x: 2, y: 4 },
