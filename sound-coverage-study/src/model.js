@@ -60,7 +60,8 @@
   const SOURCE_OUTPUT_REQUIREMENTS = Object.freeze({
     none: {
       key: "none",
-      label: "No project-specific minimum",
+      label: "Use project coverage criterion",
+      projectLabel: "No project-wide output requirement",
       minimumLevel: null,
       distance: 1,
       weighting: "A",
@@ -68,6 +69,7 @@
     outdoorWeatherproof: {
       key: "outdoorWeatherproof",
       label: "Outdoor weatherproof - 124 dB(A) @ 1 m",
+      projectLabel: "Outdoor weatherproof loudspeakers",
       minimumLevel: 124,
       distance: 1,
       weighting: "A",
@@ -75,7 +77,16 @@
     outdoorFlameproof: {
       key: "outdoorFlameproof",
       label: "Outdoor flameproof / hazardous area - 119 dB(A) @ 1 m",
+      projectLabel: "Outdoor flameproof loudspeakers (hazardous areas)",
       minimumLevel: 119,
+      distance: 1,
+      weighting: "A",
+    },
+    custom: {
+      key: "custom",
+      label: "Use custom project coverage criterion",
+      projectLabel: "Custom project minimum",
+      minimumLevel: null,
       distance: 1,
       weighting: "A",
     },
@@ -746,6 +757,8 @@
       minimumLevel: criteria.minimumLevel,
       maximumLevel: criteria.maximumLevel,
       enforceMaximum: criteria.enforceMaximum,
+      sourceOutputRequirement: "none",
+      minimumSourceOutput: 124,
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
@@ -897,18 +910,30 @@
     return referenceSpl + 10 * Math.log10(ratedPower / referencePower) - 20 * Math.log10(1 / referenceDistance);
   }
 
-  function evaluateSourceOutputRequirement(source) {
-    const requirementKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] ? source.outputRequirement : "none";
-    const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey];
+  function evaluateSourceOutputRequirement(source, project = null) {
+    const sourceKey = source && SOURCE_OUTPUT_REQUIREMENTS[source.outputRequirement] && !["none", "custom"].includes(source.outputRequirement)
+      ? source.outputRequirement
+      : "none";
+    const projectKey = project && SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement]
+      ? project.sourceOutputRequirement
+      : "none";
+    const inherited = sourceKey === "none" && projectKey !== "none";
+    const requirementKey = sourceKey !== "none" ? sourceKey : projectKey;
+    const requirement = SOURCE_OUTPUT_REQUIREMENTS[requirementKey] || SOURCE_OUTPUT_REQUIREMENTS.none;
+    const minimumLevel = inherited
+      ? clamp(finiteNumber(project.minimumSourceOutput, requirement.minimumLevel == null ? 0 : requirement.minimumLevel), 0, 180)
+      : requirement.minimumLevel;
     const ratedOutput = sourceRatedOutputAtOneMeter(source);
-    const applicable = requirement.minimumLevel != null;
+    const applicable = minimumLevel != null;
     const weightingMatches = !applicable || (source && source.weighting) === requirement.weighting;
     return {
       ...requirement,
+      minimumLevel,
+      inherited,
       applicable,
       ratedOutput,
       weightingMatches,
-      compliant: applicable && weightingMatches && ratedOutput + EPSILON >= requirement.minimumLevel,
+      compliant: applicable && weightingMatches && ratedOutput + EPSILON >= minimumLevel,
     };
   }
 
@@ -1077,6 +1102,8 @@
       minimumLevel: clamp(finiteNumber(input.minimumLevel, fallback.minimumLevel), 0, 180),
       maximumLevel: clamp(finiteNumber(input.maximumLevel, fallback.maximumLevel), 0, 180),
       enforceMaximum: input.enforceMaximum == null ? fallback.enforceMaximum : Boolean(input.enforceMaximum),
+      sourceOutputRequirement: SOURCE_OUTPUT_REQUIREMENTS[input.sourceOutputRequirement] ? input.sourceOutputRequirement : fallback.sourceOutputRequirement,
+      minimumSourceOutput: clamp(finiteNumber(input.minimumSourceOutput, fallback.minimumSourceOutput), 0, 180),
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),

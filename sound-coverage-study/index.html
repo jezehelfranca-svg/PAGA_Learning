@@ -164,6 +164,27 @@
           <input data-project-field="enforceMaximum" type="checkbox">
           <span>Include maximum in compliance status</span>
         </label>
+        <div class="section-kicker">Outdoor loudspeaker equipment</div>
+        <label class="field full">
+          <span>Project output requirement</span>
+          <select id="sourceOutputRequirement" data-project-field="sourceOutputRequirement">
+            <option value="none">No project-wide requirement</option>
+            <option value="outdoorWeatherproof">Outdoor weatherproof loudspeakers</option>
+            <option value="outdoorFlameproof">Outdoor flameproof loudspeakers (hazardous areas)</option>
+            <option value="custom">Custom project minimum</option>
+          </select>
+        </label>
+        <div class="field-grid two">
+          <label class="field">
+            <span>Minimum rated output <b>dBA</b></span>
+            <input id="minimumSourceOutput" data-project-field="minimumSourceOutput" type="number" min="0" max="180" step="0.1">
+          </label>
+          <label class="field">
+            <span>Assessment distance <b>m</b></span>
+            <input type="number" value="1" disabled>
+          </label>
+        </div>
+        <div class="source-note" id="sourceOutputRequirementNote"></div>
       </section>
 
       <details class="panel-section disclosure">

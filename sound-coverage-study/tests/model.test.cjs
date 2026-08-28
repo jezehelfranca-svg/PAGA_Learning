@@ -157,6 +157,41 @@ test("outdoor loudspeaker requirements evaluate rated output at one meter", () =
   assert.equal(mismatchResult.compliant, false);
 });
 
+test("project output criteria are inherited, editable, and overridable per source", () => {
+  const project = Model.createProject("paging");
+  project.sourceOutputRequirement = "outdoorWeatherproof";
+  project.minimumSourceOutput = 126;
+  const item = source({
+    referenceSpl: 105,
+    referenceDistance: 1,
+    referencePower: 1,
+    ratedPower: 80,
+    weighting: "A",
+    outputRequirement: "none",
+  });
+  let result = Model.evaluateSourceOutputRequirement(item, project);
+  assert.equal(result.inherited, true);
+  assert.equal(result.minimumLevel, 126);
+  assert.equal(result.compliant, false);
+
+  project.minimumSourceOutput = 124;
+  result = Model.evaluateSourceOutputRequirement(item, project);
+  assert.equal(result.compliant, true);
+
+  item.outputRequirement = "outdoorFlameproof";
+  result = Model.evaluateSourceOutputRequirement(item, project);
+  assert.equal(result.inherited, false);
+  assert.equal(result.minimumLevel, 119);
+  assert.equal(result.compliant, true);
+
+  item.outputRequirement = "none";
+  project.sourceOutputRequirement = "custom";
+  project.minimumSourceOutput = 123.5;
+  result = Model.evaluateSourceOutputRequirement(item, project);
+  assert.equal(result.inherited, true);
+  assert.equal(result.minimumLevel, 123.5);
+});
+
 test("grid compliance separates below-target, compliant, and over-limit cells", () => {
   const project = simpleProject();
   project.width = 8;
@@ -303,6 +338,23 @@ test("source output requirements survive sanitization and reject unknown keys", 
     sources: [{ presetKey: "custom", outputRequirement: "not-a-requirement" }],
   });
   assert.equal(rejected.sources[0].outputRequirement, "none");
+});
+
+test("editable project output criteria survive sanitization", () => {
+  const project = Model.sanitizeProject({
+    mode: "paging",
+    sourceOutputRequirement: "custom",
+    minimumSourceOutput: 127.5,
+  });
+  assert.equal(project.sourceOutputRequirement, "custom");
+  assert.equal(project.minimumSourceOutput, 127.5);
+  const rejected = Model.sanitizeProject({
+    mode: "paging",
+    sourceOutputRequirement: "unknown",
+    minimumSourceOutput: 999,
+  });
+  assert.equal(rejected.sourceOutputRequirement, "none");
+  assert.equal(rejected.minimumSourceOutput, 180);
 });
 
 test("batch removal deletes selected objects across categories only", () => {
