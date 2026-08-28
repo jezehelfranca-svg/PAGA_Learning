@@ -321,4 +321,12 @@ test("rectangle resize keeps the opposite corner fixed and respects plan bounds"
     Model.resizeRectangle({ x: 5, y: 5, width: 10, depth: 8 }, "se", { x: 99, y: 99 }, { width: 20, depth: 20 }),
     { x: 5, y: 5, width: 15, depth: 15 },
   );
+  assert.deepEqual(
+    Model.resizeRectangle({ x: 5, y: 5, width: 10, depth: 8 }, "e", { x: 18, y: 1 }, { width: 20, depth: 20 }),
+    { x: 5, y: 5, width: 13, depth: 8 },
+  );
+  assert.deepEqual(
+    Model.resizeRectangle({ x: 5, y: 5, width: 10, depth: 8 }, "n", { x: 1, y: 2 }, { width: 20, depth: 20 }),
+    { x: 5, y: 2, width: 10, depth: 11 },
+  );
 });

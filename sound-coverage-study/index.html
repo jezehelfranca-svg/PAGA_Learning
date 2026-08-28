@@ -97,6 +97,7 @@
             <input data-project-field="gridSpacing" type="number" min="0.25" max="1000" step="0.25">
           </label>
         </div>
+        <p class="microcopy">These settings define the whole receiver plane and calculation grid. Resize individual noise zones directly on the map.</p>
         <label class="upload-control">
           <input id="backgroundInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
           <span class="upload-icon">＋</span>
@@ -224,7 +225,7 @@
       </div>
 
       <div class="canvas-card" id="canvasCard">
-        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Drag a selected item to move the selected group. Draw obstacles by dragging, and resize a selected obstacle using its corner handles."></canvas>
+        <canvas id="coverageCanvas" tabindex="0" aria-label="Sound coverage map. Drag a selected item to move the selected group. Resize selected noise zones and obstacles using their side or corner handles."></canvas>
         <div class="map-axis-label x-axis" id="xAxisLabel">90 m</div>
         <div class="map-axis-label y-axis" id="yAxisLabel">60 m</div>
         <div class="map-tooltip" id="mapTooltip" role="status" hidden></div>
@@ -234,7 +235,7 @@
           <span>Choose a device and place it on the plan.</span>
         </div>
         <div class="map-legend" id="mapLegend"></div>
-        <div class="map-hint" id="mapHint"><kbd>S</kbd> Select devices · <kbd>Drag selection</kbd> move group · <kbd>Drag empty space</kbd> box-select · <kbd>Drag obstacle corner</kbd> resize</div>
+        <div class="map-hint" id="mapHint"><kbd>S</kbd> Select devices · <kbd>Drag selection</kbd> move group · <kbd>Drag empty space</kbd> box-select · <kbd>Drag zone/obstacle handle</kbd> resize</div>
       </div>
 
       <div class="metric-strip" aria-label="Study summary">

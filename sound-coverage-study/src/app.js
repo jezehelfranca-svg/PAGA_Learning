@@ -11,8 +11,8 @@
   const MAX_VIEW_ZOOM = 8;
   const MAX_AUTO_SOURCES = 500;
   const SELECTION_BRUSH_RADIUS = 18;
-  const OBSTACLE_HANDLE_HIT_RADIUS = 9;
-  const MIN_OBSTACLE_SIZE = 0.1;
+  const RECTANGLE_HANDLE_HIT_RADIUS = 9;
+  const MIN_RECTANGLE_SIZE = 0.1;
   const canvas = document.getElementById("coverageCanvas");
   const canvasCard = document.getElementById("canvasCard");
   const context = canvas.getContext("2d", { alpha: true });
@@ -369,7 +369,7 @@
     canvas.style.cursor = "";
     document.getElementById("mapHint").textContent = measurementMode
       ? "Measure ; click the first point"
-      : "Drag a selected item to move the group ; drag empty space to box-select ; drag an obstacle corner to resize";
+      : "Drag a selected item to move the group ; drag empty space to box-select ; drag a zone or obstacle handle to resize";
     updateMeasurementReadout();
     scheduleCanvasRender();
   }
@@ -693,20 +693,37 @@
         context.strokeRect(position.x, position.y, width, height);
         context.setLineDash([]);
         if (project.showLabels) drawCanvasLabel(`${zone.name} · ${round(zone.level, 1)} ${decibelUnit()}`, position.x + 5, position.y + 14, "#174f7c");
+        if (isSelected) drawRectangleResizeHandles(zone, "#174f7c");
       }
     }
     context.restore();
   }
 
-  function obstacleResizeHandles(obstacle) {
-    const topLeft = planToCanvas(obstacle.x, obstacle.y);
-    const bottomRight = planToCanvas(obstacle.x + obstacle.width, obstacle.y + obstacle.depth);
+  function rectangleResizeHandles(rectangle) {
+    const topLeft = planToCanvas(rectangle.x, rectangle.y);
+    const bottomRight = planToCanvas(rectangle.x + rectangle.width, rectangle.y + rectangle.depth);
+    const middleX = (topLeft.x + bottomRight.x) / 2;
+    const middleY = (topLeft.y + bottomRight.y) / 2;
     return [
       { part: "resize-nw", cursor: "nwse-resize", x: topLeft.x, y: topLeft.y },
+      { part: "resize-n", cursor: "ns-resize", x: middleX, y: topLeft.y },
       { part: "resize-ne", cursor: "nesw-resize", x: bottomRight.x, y: topLeft.y },
-      { part: "resize-sw", cursor: "nesw-resize", x: topLeft.x, y: bottomRight.y },
+      { part: "resize-e", cursor: "ew-resize", x: bottomRight.x, y: middleY },
       { part: "resize-se", cursor: "nwse-resize", x: bottomRight.x, y: bottomRight.y },
+      { part: "resize-s", cursor: "ns-resize", x: middleX, y: bottomRight.y },
+      { part: "resize-sw", cursor: "nesw-resize", x: topLeft.x, y: bottomRight.y },
+      { part: "resize-w", cursor: "ew-resize", x: topLeft.x, y: middleY },
     ];
+  }
+
+  function drawRectangleResizeHandles(rectangle, color) {
+    rectangleResizeHandles(rectangle).forEach((handle) => {
+      context.fillStyle = "#ffffff";
+      context.strokeStyle = color;
+      context.lineWidth = 2;
+      context.fillRect(handle.x - 4, handle.y - 4, 8, 8);
+      context.strokeRect(handle.x - 4, handle.y - 4, 8, 8);
+    });
   }
 
   function drawObstacles() {
@@ -724,15 +741,7 @@
       context.lineWidth = isSelected ? 2.5 : 1;
       context.strokeRect(position.x, position.y, width, height);
       if (project.showLabels) drawCanvasLabel(`${obstacle.name} · −${round(obstacle.loss, 1)} dB`, position.x + 5, position.y + 14, "#0b2526");
-      if (isSelected) {
-        obstacleResizeHandles(obstacle).forEach((handle) => {
-          context.fillStyle = "#ffffff";
-          context.strokeStyle = "#0d5b58";
-          context.lineWidth = 2;
-          context.fillRect(handle.x - 4, handle.y - 4, 8, 8);
-          context.strokeRect(handle.x - 4, handle.y - 4, 8, 8);
-        });
-      }
+      if (isSelected) drawRectangleResizeHandles(obstacle, "#0d5b58");
     }
     context.restore();
   }
@@ -1130,7 +1139,7 @@
           ? "Click the plan to add a noise zone"
           : placementMode === "obstacle"
             ? "Click-drag on the plan to draw a rectangular obstacle"
-            : "Drag selection to move group | drag empty space to box-select | drag obstacle corner to resize | middle-drag to pan";
+            : "Drag selection to move group | drag empty space to box-select | drag zone or obstacle handle to resize | middle-drag to pan";
     document.getElementById("mapHint").textContent = label;
     if (placementMode === "select") showToast("Select devices active: start on a device to sweep, or drag empty space for a box.");
     scheduleCanvasRender();
@@ -1441,7 +1450,7 @@
     const start = obstaclePlacementDrag.start;
     const rectangle = autoPlacementRectangle(start, obstaclePlacementDrag.end);
     obstaclePlacementDrag = null;
-    if (rectangle.width < MIN_OBSTACLE_SIZE || rectangle.depth < MIN_OBSTACLE_SIZE) {
+    if (rectangle.width < MIN_RECTANGLE_SIZE || rectangle.depth < MIN_RECTANGLE_SIZE) {
       addAtPoint("obstacle", start);
       return;
     }
@@ -1478,7 +1487,7 @@
       };
       project.noiseZones.push(zone);
       setSingleSelection({ type: "noise", id: zone.id });
-      showToast("Noise zone added. Edit its size and ambient level in the inspector.");
+      showToast("Noise zone added. Drag a side or corner handle to resize it, then set its ambient and compliance requirements.");
     } else {
       const width = Math.min(project.width * 0.2, 24);
       const depth = Math.min(project.depth * 0.15, 14);
@@ -1503,8 +1512,16 @@
     for (let index = project.obstacles.length - 1; index >= 0; index -= 1) {
       const obstacle = project.obstacles[index];
       if (obstacle.enabled === false || !selectionHas("obstacle", obstacle.id)) continue;
-      const handle = obstacleResizeHandles(obstacle).find((item) => Math.hypot(canvasPoint.x - item.x, canvasPoint.y - item.y) <= OBSTACLE_HANDLE_HIT_RADIUS);
+      const handle = rectangleResizeHandles(obstacle).find((item) => Math.hypot(canvasPoint.x - item.x, canvasPoint.y - item.y) <= RECTANGLE_HANDLE_HIT_RADIUS);
       if (handle) return { type: "obstacle", id: obstacle.id, object: obstacle, part: handle.part, cursor: handle.cursor };
+    }
+    if (project.showNoiseZones !== false) {
+      for (let index = project.noiseZones.length - 1; index >= 0; index -= 1) {
+        const zone = project.noiseZones[index];
+        if (zone.enabled === false || !selectionHas("noise", zone.id)) continue;
+        const handle = rectangleResizeHandles(zone).find((item) => Math.hypot(canvasPoint.x - item.x, canvasPoint.y - item.y) <= RECTANGLE_HANDLE_HIT_RADIUS);
+        if (handle) return { type: "noise", id: zone.id, object: zone, part: handle.part, cursor: handle.cursor };
+      }
     }
     for (let index = project.sources.length - 1; index >= 0; index -= 1) {
       const source = project.sources[index];
@@ -1589,7 +1606,7 @@
       return;
     }
     if (dragging.action === "resize") {
-      const rectangle = Model.resizeRectangle(dragging.rectangle, dragging.handle, planPoint, { width: project.width, depth: project.depth }, MIN_OBSTACLE_SIZE);
+      const rectangle = Model.resizeRectangle(dragging.rectangle, dragging.handle, planPoint, { width: project.width, depth: project.depth }, MIN_RECTANGLE_SIZE);
       Object.assign(object, {
         x: roundDrawnValue(rectangle.x),
         y: roundDrawnValue(rectangle.y),
