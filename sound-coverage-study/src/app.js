@@ -547,7 +547,7 @@
     }
 
     if (project.showNoiseZones !== false) drawNoiseZones(true);
-    drawHeatmap();
+    if (!dragging) drawHeatmap();
     drawObstacles();
     if (project.showGrid) drawGrid();
     if (project.showNoiseZones !== false) drawNoiseZones(false);
@@ -1601,8 +1601,7 @@
       let angle = (Math.atan2(planPoint.y - object.y, planPoint.x - object.x) * 180) / Math.PI;
       if (event && event.shiftKey) angle = Math.round(angle / 15) * 15;
       object.azimuth = Model.normalizeAngle(angle);
-      project.updatedAt = new Date().toISOString();
-      recalculate();
+      scheduleCanvasRender();
       return;
     }
     if (dragging.action === "resize") {
@@ -1613,8 +1612,7 @@
         width: roundDrawnValue(rectangle.width),
         depth: roundDrawnValue(rectangle.depth),
       });
-      project.updatedAt = new Date().toISOString();
-      recalculate();
+      scheduleCanvasRender();
       return;
     }
     const requestedX = planPoint.x - dragging.start.x;
@@ -1624,8 +1622,7 @@
       item.object.x = roundPlanValue(item.x + delta.x);
       item.object.y = roundPlanValue(item.y + delta.y);
     });
-    project.updatedAt = new Date().toISOString();
-    recalculate();
+    scheduleCanvasRender();
   }
 
   function showMapTooltip(event, canvasPoint) {
@@ -2163,12 +2160,16 @@
         canvas.classList.remove("dragging");
         canvas.classList.remove("rotating");
         canvas.classList.remove("resizing");
+        canvas.style.cursor = "";
+        project.updatedAt = new Date().toISOString();
+        recalculate();
         renderInspector();
         renderObjectList();
         debounceSave();
       }
     });
     canvas.addEventListener("pointercancel", () => {
+      const objectDragCancelled = Boolean(dragging);
       dragging = null;
       viewPanning = null;
       autoPlacementDrag = null;
@@ -2179,6 +2180,11 @@
       canvas.classList.remove("resizing");
       canvas.classList.remove("panning");
       canvas.style.cursor = "";
+      if (objectDragCancelled) {
+        project.updatedAt = new Date().toISOString();
+        recalculate();
+        debounceSave();
+      }
       renderObjectList();
       renderInspector();
       scheduleCanvasRender();
