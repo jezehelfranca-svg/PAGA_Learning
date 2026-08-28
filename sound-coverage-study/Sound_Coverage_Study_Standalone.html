@@ -2577,14 +2577,18 @@ kbd {
   }
 
   function noiseRequirementAtPoint(project, x, y) {
-    let ambient = finiteNumber(project.ambientLevel, 0);
-    let target = targetForNoise(project, ambient);
+    const projectAmbient = finiteNumber(project.ambientLevel, 0);
     const zones = Array.isArray(project.noiseZones) ? project.noiseZones : [];
+    let ambient = -Infinity;
+    let target = -Infinity;
+    let activeZoneCount = 0;
     for (const zone of zones) {
       if (zone.enabled === false || !pointIsInsideNoiseZone(zone, x, y)) continue;
-      ambient = Math.max(ambient, finiteNumber(zone.level, ambient));
+      activeZoneCount += 1;
+      ambient = Math.max(ambient, finiteNumber(zone.level, projectAmbient));
       target = Math.max(target, targetForNoiseZone(project, zone));
     }
+    if (!activeZoneCount) return { ambient: projectAmbient, target: targetForNoise(project, projectAmbient) };
     return { ambient, target };
   }
 
@@ -4387,6 +4391,7 @@ kbd {
   }
 
   function renderNoiseInspector(zone) {
+    const effectiveTarget = Model.targetForNoiseZone(project, zone);
     inspector.innerHTML = `
       <form class="inspector-form" autocomplete="off">
         ${textField("Zone name", "name", zone.name, { full: true })}
@@ -4402,7 +4407,7 @@ kbd {
           ${numberField("Required margin", "requiredMargin", zone.requiredMargin ?? "", { min: 0, max: 100, step: 0.5, unit: "dB", placeholder: "Project default" })}
           ${numberField("Minimum target", "minimumLevel", zone.minimumLevel ?? "", { min: 0, max: 180, step: 0.5, unit: decibelUnit(), placeholder: "Project default" })}
         </div>
-        <div class="provenance-note sourced">Zones override the project ambient level inside their rectangle. Leave compliance fields blank to inherit project criteria. When zones overlap, the most demanding active target is used.</div>
+        <div class="provenance-note sourced"><b>Effective zone target: ${round(effectiveTarget, 1)} ${escapeHtml(decibelUnit())}.</b> The zone ambient replaces the project ambient inside this rectangle, even when it is lower. Target is the greater of ambient plus margin or the applicable minimum. When zones overlap, the most demanding active zone target is used.</div>
         ${enabledField(zone.enabled)}
         <div class="inspector-actions">
           <button class="button" type="button" data-object-action="duplicate">Duplicate</button>
@@ -5100,7 +5105,8 @@ kbd {
         if (object.minimumLevel != null) object.minimumLevel = Model.clamp(Number(object.minimumLevel), 0, 180);
       }
     }
-    markChanged({ refreshInspector: control.type === "checkbox" });
+    const refreshNoiseTarget = selected.type === "noise" && ["level", "requiredMargin", "minimumLevel"].includes(key);
+    markChanged({ refreshInspector: control.type === "checkbox" || refreshNoiseTarget });
     document.getElementById("inspectorTitle").textContent = object.name || "Selected object";
   }
 
@@ -5228,7 +5234,7 @@ kbd {
     const image = canvas.toDataURL("image/png");
     const sourceRows = project.sources.map((source) => `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`).join("");
     const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
-    const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td></tr>`).join("");
+    const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     report.innerHTML = `
       <div class="print-cover">
         <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}</p></div>
@@ -5245,7 +5251,7 @@ kbd {
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
         <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Absolute minimum</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
-        <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
+        <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
       <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="8">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
   }

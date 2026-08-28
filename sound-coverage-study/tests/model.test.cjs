@@ -65,6 +65,18 @@ test("ambient zones override the project background and set the margin target", 
   assert.equal(Model.targetForNoise(project, 75), 85);
 });
 
+test("a lower zone ambient replaces the higher project ambient", () => {
+  const project = simpleProject();
+  project.ambientLevel = 75;
+  project.minimumLevel = 0;
+  project.requiredMargin = 10;
+  project.noiseZones = [{ x: 4, y: 4, width: 4, depth: 4, level: 55, minimumLevel: 0, enabled: true }];
+  assert.equal(Model.noiseAtPoint(project, 2, 2), 75);
+  assert.equal(Model.calculatePoint(project, 2, 2).target, 85);
+  assert.equal(Model.noiseAtPoint(project, 5, 5), 55);
+  assert.equal(Model.calculatePoint(project, 5, 5).target, 65);
+});
+
 test("noise zones can override compliance margin and minimum target", () => {
   const project = simpleProject();
   project.ambientLevel = 50;

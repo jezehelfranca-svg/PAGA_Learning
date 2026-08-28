@@ -315,14 +315,18 @@
   }
 
   function noiseRequirementAtPoint(project, x, y) {
-    let ambient = finiteNumber(project.ambientLevel, 0);
-    let target = targetForNoise(project, ambient);
+    const projectAmbient = finiteNumber(project.ambientLevel, 0);
     const zones = Array.isArray(project.noiseZones) ? project.noiseZones : [];
+    let ambient = -Infinity;
+    let target = -Infinity;
+    let activeZoneCount = 0;
     for (const zone of zones) {
       if (zone.enabled === false || !pointIsInsideNoiseZone(zone, x, y)) continue;
-      ambient = Math.max(ambient, finiteNumber(zone.level, ambient));
+      activeZoneCount += 1;
+      ambient = Math.max(ambient, finiteNumber(zone.level, projectAmbient));
       target = Math.max(target, targetForNoiseZone(project, zone));
     }
+    if (!activeZoneCount) return { ambient: projectAmbient, target: targetForNoise(project, projectAmbient) };
     return { ambient, target };
   }
 

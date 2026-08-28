@@ -24,6 +24,7 @@ This validates the JavaScript, runs the acoustic-model tests, and regenerates th
 - Lightweight move, rotate, and resize previews defer the full acoustic-grid recalculation until pointer release for responsive editing.
 - Rectangular obstacle drawing by click-drag, plus direct side-and-corner resizing for selected noise zones and obstacles.
 - Rectangular ambient-noise zones with optional per-zone required-margin and minimum-target overrides, plus simplified line-of-sight obstacles.
+- A zone replaces the project ambient inside its rectangle, allowing both higher- and lower-ambient scenario testing.
 - Overlapping active noise zones use the most demanding local compliance target.
 - Energetic summation of multiple sources.
 - Connected-load and amplifier-headroom schedule by speaker loop.
