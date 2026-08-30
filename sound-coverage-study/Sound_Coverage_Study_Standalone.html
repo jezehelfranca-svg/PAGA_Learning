@@ -1258,6 +1258,10 @@ kbd {
   background: var(--surface-2);
 }
 
+.coverage-basis-grid .wide {
+  grid-column: 1 / -1;
+}
+
 .coverage-basis-grid dt {
   color: var(--ink-faint);
   font-size: 8px;
@@ -2360,7 +2364,7 @@ kbd {
         <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
         <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
         <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
-        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles appear in the Device list and keep their MTO material IDs. Then set mounting height, aim, class, and verified losses.</span></li>
+        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles keep their MTO material IDs, network identity, technical specifications, and available placement-height defaults. This command imports material profiles only; existing MTO takeoff placements are not added to the study. Then set mounting height, aim, class, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
         <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. <b>Export</b> creates one JSON that can be reopened here or loaded in Telecom MTO Lite under <b>Setup &gt; Project &gt; Load</b>. Export the grid CSV separately, then print the study.</span></li>
@@ -3219,8 +3223,8 @@ kbd {
       weighting: preset.weighting,
       confidence: preset.confidence,
       provenance: preset.provenance,
-      outputRequirement: "none",
-      loop: "L1",
+      outputRequirement: preset.outputRequirement || "none",
+      loop: preset.loop || "L1",
       enabled: true,
       ...overrides,
     };
@@ -3553,6 +3557,63 @@ kbd {
     return (typeof value === "string" ? value : String(fallback ?? "")).slice(0, maximumLength);
   }
 
+  function sanitizeJsonValue(input, depth = 0) {
+    if (input == null || typeof input === "boolean") return input;
+    if (typeof input === "string") return input.slice(0, 10000);
+    if (typeof input === "number") return Number.isFinite(input) ? input : null;
+    if (depth >= 8) return null;
+    if (Array.isArray(input)) {
+      return input
+        .slice(0, 250)
+        .map((value) => sanitizeJsonValue(value, depth + 1))
+        .filter((value) => value !== undefined);
+    }
+    if (typeof input !== "object") return undefined;
+    const output = {};
+    Object.keys(input).slice(0, 250).forEach((key) => {
+      if (["__proto__", "prototype", "constructor"].includes(key)) return;
+      const value = sanitizeJsonValue(input[key], depth + 1);
+      if (value !== undefined) output[safeText(key, "", 160)] = value;
+    });
+    return output;
+  }
+
+  function sanitizeMtoCustomSvgSymbol(input) {
+    const value = input && typeof input === "object" ? input : {};
+    const key = safeText(value.key, "", 200);
+    const name = safeText(value.name, key || "Imported symbol", 240);
+    const dataUrl = safeText(value.dataUrl, "", 500000);
+    if (!key || !/^data:image\/svg\+xml(?:;[^,]*)?,/i.test(dataUrl)) return null;
+    return { key, name, dataUrl };
+  }
+
+  function medianFinite(values) {
+    const ordered = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!ordered.length) return null;
+    const middle = Math.floor(ordered.length / 2);
+    return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+  }
+
+  function sourceDefaultsFromMtoSession(payload, material) {
+    const takeoffs = Array.isArray(payload && payload.takeoffs) ? payload.takeoffs : [];
+    const matching = takeoffs.filter((takeoff) => takeoff && takeoff.materialId === material.id);
+    const heights = matching.map((takeoff) => {
+      const metadata = takeoff && takeoff.metadata && typeof takeoff.metadata === "object" ? takeoff.metadata : {};
+      const pagaAcoustic = metadata.pagaAcoustic && typeof metadata.pagaAcoustic === "object" ? metadata.pagaAcoustic : {};
+      const designBasis = pagaAcoustic.designBasis && typeof pagaAcoustic.designBasis === "object" ? pagaAcoustic.designBasis : {};
+      const candidate = metadata.mountingHeightM ?? metadata.z ?? designBasis.mountingHeightM;
+      const parsed = Number(candidate);
+      return Number.isFinite(parsed) ? parsed : NaN;
+    });
+    const mountingHeightM = medianFinite(heights);
+    const network = safeText(material && material.network, "", 80).trim();
+    return {
+      mountingHeightM,
+      loop: network ? `PAGA-${network}` : "",
+      placementCount: matching.length,
+    };
+  }
+
   function sanitizeMtoPagaMaterial(input, index = 0) {
     const value = input && typeof input === "object" ? input : {};
     const coverageValue = value.coverage && typeof value.coverage === "object" ? value.coverage : {};
@@ -3568,11 +3629,34 @@ kbd {
     const ambientNoise = clamp(finiteNumber(coverageValue.ambientNoise, 65), 0, 180);
     const targetMargin = clamp(finiteNumber(coverageValue.targetMargin, 10), 0, 100);
     const targetSpl = clamp(finiteNumber(coverageValue.targetSpl, ambientNoise + targetMargin), 0, 220);
+    const sourceDefaultsValue = value.sourceDefaults && typeof value.sourceDefaults === "object" ? value.sourceDefaults : {};
+    const sourceDefaultHeight = Number(sourceDefaultsValue.mountingHeightM);
+    const mountingHeightM = clamp(
+      finiteNumber(coverageValue.mountingHeightM, Number.isFinite(sourceDefaultHeight) ? sourceDefaultHeight : 3),
+      0,
+      1000
+    );
+    const listenerEarHeightM = clamp(finiteNumber(coverageValue.listenerEarHeightM, 1.5), 0, 1000);
+    const verticalSeparationM = clamp(
+      finiteNumber(coverageValue.verticalSeparationM, Math.abs(mountingHeightM - listenerEarHeightM)),
+      0,
+      1000
+    );
     const radiusM = clamp(
       finiteNumber(coverageValue.radiusM, Math.pow(10, (spl - targetSpl) / (coverageValue.indoorAttenuation ? 10 : 20))),
       0.01,
       100000
     );
+    const planRadiusM = clamp(finiteNumber(coverageValue.planRadiusM, radiusM), 0, 100000);
+    const slantRadiusM = clamp(
+      finiteNumber(coverageValue.slantRadiusM, Math.hypot(planRadiusM, verticalSeparationM)),
+      0,
+      100000
+    );
+    const technicalSpec = sanitizeJsonValue(value.technicalSpec);
+    const network = safeText(value.network, "", 120);
+    const networkColor = safeText(value.networkColor, "", 120);
+    const customSvgSymbol = sanitizeMtoCustomSvgSymbol(value.customSvgSymbol);
     return {
       id: materialId,
       name: safeText(value.name, `Imported PAGA material ${index + 1}`, 240),
@@ -3587,6 +3671,15 @@ kbd {
       w: clamp(finiteNumber(value.w, 0), 0, 100000),
       T: clamp(finiteNumber(value.T, 1), 0, 1000000),
       symbol: safeText(value.symbol, "speaker", 160) || "speaker",
+      technicalSpec: technicalSpec && typeof technicalSpec === "object" && !Array.isArray(technicalSpec) ? technicalSpec : {},
+      network,
+      networkColor,
+      sourceDefaults: {
+        mountingHeightM,
+        loop: safeText(sourceDefaultsValue.loop, network ? `PAGA-${network}` : "L1", 120) || "L1",
+        placementCount: Math.max(0, Math.round(finiteNumber(sourceDefaultsValue.placementCount, 0))),
+      },
+      customSvgSymbol,
       coverage: {
         type: "paga",
         enabled: coverageValue.enabled !== false,
@@ -3597,16 +3690,16 @@ kbd {
         targetMargin,
         targetSpl,
         radiusM,
-        planRadiusM: clamp(finiteNumber(coverageValue.planRadiusM, radiusM), 0, 100000),
-        slantRadiusM: clamp(finiteNumber(coverageValue.slantRadiusM, radiusM), 0, 100000),
+        planRadiusM,
+        slantRadiusM,
         indoorAttenuation: Boolean(coverageValue.indoorAttenuation),
         attenuationModel: coverageValue.indoorAttenuation ? "indoor" : "freefield",
         dispersionAngle: clamp(finiteNumber(coverageValue.dispersionAngle, 360), 1, 360),
         verticalDispersionAngle: clamp(finiteNumber(coverageValue.verticalDispersionAngle, 360), 1, 360),
-        mountingHeightM: clamp(finiteNumber(coverageValue.mountingHeightM, 3), 0, 1000),
-        listenerEarHeightM: clamp(finiteNumber(coverageValue.listenerEarHeightM, 1.5), 0, 1000),
-        verticalSeparationM: clamp(finiteNumber(coverageValue.verticalSeparationM, 1.5), 0, 1000),
-        designSpacingM: clamp(finiteNumber(coverageValue.designSpacingM, radiusM * Math.SQRT2), 0, 200000),
+        mountingHeightM,
+        listenerEarHeightM,
+        verticalSeparationM,
+        designSpacingM: clamp(finiteNumber(coverageValue.designSpacingM, planRadiusM * Math.SQRT2), 0, 200000),
         weighting: ["A", "C", "Z"].includes(coverageValue.weighting) ? coverageValue.weighting : "A",
         color: coverageColor,
       },
@@ -3622,10 +3715,31 @@ kbd {
         : payload.material
           ? [payload.material]
           : [];
+    const customSymbols = new Map();
+    (Array.isArray(payload.customSvgSymbols) ? payload.customSvgSymbols : []).forEach((symbol) => {
+      const sanitized = sanitizeMtoCustomSvgSymbol(symbol);
+      if (sanitized) {
+        customSymbols.set(sanitized.key, sanitized);
+        customSymbols.set(sanitized.name, sanitized);
+      }
+    });
     const seen = new Set();
     return candidates
       .slice(0, 1000)
-      .map((material, index) => sanitizeMtoPagaMaterial(material, index))
+      .map((material, index) => {
+        const sourceDefaults = sourceDefaultsFromMtoSession(payload, material || {});
+        const symbolKey = safeText(material && material.symbol, "", 160);
+        return sanitizeMtoPagaMaterial({
+          ...(material || {}),
+          sourceDefaults: {
+            ...((material && material.sourceDefaults) || {}),
+            ...(sourceDefaults.mountingHeightM == null ? {} : { mountingHeightM: sourceDefaults.mountingHeightM }),
+            ...(sourceDefaults.loop && !(material && material.sourceDefaults && material.sourceDefaults.loop) ? { loop: sourceDefaults.loop } : {}),
+            placementCount: sourceDefaults.placementCount || finiteNumber(material && material.sourceDefaults && material.sourceDefaults.placementCount, 0),
+          },
+          customSvgSymbol: (material && material.customSvgSymbol) || customSymbols.get(symbolKey) || null,
+        }, index);
+      })
       .filter((material) => {
         if (!material || seen.has(material.id)) return false;
         seen.add(material.id);
@@ -3646,15 +3760,18 @@ kbd {
       referenceDistance: 1,
       referencePower: 1,
       tapPower: coverage.power,
-      ratedPower: coverage.power,
+      ratedPower: Math.max(coverage.power, finiteNumber(sanitized.technicalSpec.nominalPowerW, coverage.power)),
       beamWidth: coverage.dispersionAngle,
       verticalBeamWidth: coverage.verticalDispersionAngle,
       rearAttenuation: 0,
       nearFieldDistance: 1,
-      sourceHeight: coverage.mountingHeightM,
+      sourceHeight: sanitized.sourceDefaults.mountingHeightM,
       weighting: coverage.weighting,
       confidence: "user",
       provenance: `Imported from Telecom MTO Material Configuration: ${sanitized.name} (${sanitized.id}).`,
+      loop: sanitized.sourceDefaults.loop,
+      materialColor: sanitized.color,
+      network: sanitized.network,
     };
   }
 
@@ -3896,6 +4013,8 @@ kbd {
     const materials = [];
     const takeoffs = [];
     const hiddenMaterialIds = new Set();
+    const customSvgSymbols = [];
+    const customSvgSymbolKeys = new Set();
     const materialProfileById = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
 
     (project.sources || []).forEach((source, index) => {
@@ -3923,6 +4042,10 @@ kbd {
       let material = materialBySignature.get(signature);
       if (!material) {
         const materialId = importedMaterial ? importedMaterial.id : `paga-mat-${materials.length + 1}`;
+        if (importedMaterial && importedMaterial.customSvgSymbol && !customSvgSymbolKeys.has(importedMaterial.customSvgSymbol.key)) {
+          customSvgSymbols.push(importedMaterial.customSvgSymbol);
+          customSvgSymbolKeys.add(importedMaterial.customSvgSymbol.key);
+        }
         const modelName = String(source.model || source.name || "PAGA loudspeaker").trim();
         material = {
           ...(importedMaterial || {}),
@@ -3970,6 +4093,8 @@ kbd {
           pagaSourceOutputRequirement: requirement.key,
           pagaImportedMaterial: Boolean(importedMaterial),
         };
+        delete material.customSvgSymbol;
+        delete material.sourceDefaults;
         materialBySignature.set(signature, material);
         materials.push(material);
         if (source.enabled === false) hiddenMaterialIds.add(materialId);
@@ -4096,7 +4221,7 @@ kbd {
       drawingSource,
       drawingSnapshot: null,
       cadReference: null,
-      customSvgSymbols: [],
+      customSvgSymbols,
       wbsZones: [],
       pagaCompatibility: {
         format: "PAGA Sound Coverage + Telecom MTO Project Session",
@@ -4336,6 +4461,16 @@ kbd {
   function round(value, digits = 1) {
     if (!Number.isFinite(value)) return "—";
     return Number(value).toFixed(digits);
+  }
+
+  function materialDetailText(value) {
+    if (Array.isArray(value)) return value.join(", ");
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .map(([key, item]) => `${key}: ${materialDetailText(item)}`)
+        .join("; ");
+    }
+    return String(value ?? "");
   }
 
   function roundPlanValue(value) {
@@ -4687,6 +4822,11 @@ kbd {
     return (project.materialProfiles || []).find((material) => material.id === materialId) || null;
   }
 
+  function materialProfileForSource(source) {
+    if (!source) return null;
+    return (project.materialProfiles || []).find((material) => material.id === source.mtoMaterialId) || null;
+  }
+
   function devicePresetForKey(key) {
     const material = materialProfileFromKey(key);
     return material
@@ -4701,7 +4841,10 @@ kbd {
       .map((preset) => `<option value="${escapeHtml(preset.key)}">${escapeHtml(preset.name)}</option>`)
       .join("");
     const importedOptions = (project.materialProfiles || [])
-      .map((material) => `<option value="mto:${escapeHtml(material.id)}">MTO · ${escapeHtml(material.name)}</option>`)
+      .map((material) => {
+        const network = material.network ? ` · Network ${escapeHtml(material.network)}` : "";
+        return `<option value="mto:${escapeHtml(material.id)}">MTO${network} · ${escapeHtml(material.name)}</option>`;
+      })
       .join("");
     select.innerHTML = `<optgroup label="Built-in profiles">${builtInOptions}</optgroup>${importedOptions ? `<optgroup label="Imported Telecom MTO materials">${importedOptions}</optgroup>` : ""}`;
     const defaultKey = project.mode === "siren" ? "siren3200" : "horn25";
@@ -4722,12 +4865,17 @@ kbd {
         const merged = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
         imported.forEach((material) => merged.set(material.id, material));
         project.materialProfiles = Array.from(merged.values());
+        const allMaterialCount = Array.isArray(payload.materials) ? payload.materials.length : imported.length;
+        const layoutTakeoffCount = Array.isArray(payload.takeoffs) ? payload.takeoffs.length : 0;
         const selectedKey = `mto:${imported[0].id}`;
         populateDevicePresets(selectedKey);
         project.updatedAt = new Date().toISOString();
         debounceSave();
         renderInspector();
-        showToast(`${imported.length} PAGA material${imported.length === 1 ? "" : "s"} imported. Select one from the Device list to place or auto-place.`);
+        const layoutNote = layoutTakeoffCount
+          ? ` Material profiles only; ${layoutTakeoffCount} existing MTO layout placements were not added.`
+          : "";
+        showToast(`${imported.length} PAGA speaker material${imported.length === 1 ? "" : "s"} imported from ${allMaterialCount} total.${layoutNote}`);
       } catch (error) {
         console.error(error);
         showToast("That file is not a valid Telecom MTO Material Configuration or Project Session.");
@@ -5100,10 +5248,12 @@ kbd {
     for (const source of project.sources || []) {
       if (source.enabled === false) continue;
       const position = planToCanvas(source.x, source.y);
+      const material = materialProfileForSource(source);
+      const materialColor = material ? material.color : "#0c5356";
       const beam = Model.clamp(Number(source.beamWidth), 1, 360);
       const radius = Math.min(layout.planWidth, layout.planHeight) * 0.26;
-      context.fillStyle = "rgba(12,83,86,0.075)";
-      context.strokeStyle = "rgba(12,83,86,0.27)";
+      context.fillStyle = rgba(materialColor, 0.075);
+      context.strokeStyle = rgba(materialColor, 0.27);
       context.lineWidth = 1;
       if (beam >= 359) {
         context.beginPath();
@@ -5130,9 +5280,11 @@ kbd {
       const position = planToCanvas(source.x, source.y);
       const handle = rotationHandlePosition(source);
       const isSelected = selectionHas("source", source.id);
+      const material = materialProfileForSource(source);
+      const materialColor = material ? material.color : source.confidence === "sourced" ? "#0f6669" : "#14575a";
       context.save();
       context.globalAlpha = source.enabled === false ? 0.42 : 1;
-      context.strokeStyle = isSelected ? "#0f6669" : "rgba(15,102,105,0.72)";
+      context.strokeStyle = isSelected ? "#0f6669" : rgba(materialColor, 0.72);
       context.lineWidth = isSelected ? 2 : 1.4;
       context.beginPath();
       context.moveTo(position.x, position.y);
@@ -5159,7 +5311,7 @@ kbd {
       context.translate(position.x, position.y);
       context.rotate(Model.degreesToRadians(source.azimuth));
       context.globalAlpha = source.enabled === false ? 0.45 : 1;
-      context.fillStyle = source.confidence === "sourced" ? "#0f6669" : "#14575a";
+      context.fillStyle = materialColor;
       context.strokeStyle = "white";
       context.lineWidth = 1.5;
       context.beginPath();
@@ -5397,6 +5549,34 @@ kbd {
     const attenuationLabel = designBasis.attenuationModel === "indoor"
       ? "Indoor screening (-3 dB per doubling)"
       : "Free field (-6 dB per doubling)";
+    const importedMaterial = materialProfileForSource(source);
+    const technicalSpec = importedMaterial && importedMaterial.technicalSpec ? importedMaterial.technicalSpec : {};
+    const materialDetailRows = importedMaterial ? [
+      ["Network", importedMaterial.network],
+      ["Network color", importedMaterial.networkColor],
+      ["MTO symbol", importedMaterial.customSvgSymbol ? importedMaterial.customSvgSymbol.name : importedMaterial.symbol],
+      ["Session placements used for defaults", importedMaterial.sourceDefaults && importedMaterial.sourceDefaults.placementCount],
+      ["Imported nominal coverage radius", importedMaterial.coverage && importedMaterial.coverage.radiusM == null ? "" : `${importedMaterial.coverage.radiusM} m`],
+      ["Nominal power", technicalSpec.nominalPowerW == null ? "" : `${technicalSpec.nominalPowerW} W`],
+      ["Selectable taps", Array.isArray(technicalSpec.selectableTapsW) ? `${technicalSpec.selectableTapsW.join(", ")} W` : ""],
+      ["Minimum ingress protection", technicalSpec.minimumIngressProtection],
+      ["Weatherproof minimum output", technicalSpec.weatherproofMinSPLdBA1mAt25W == null ? "" : `${technicalSpec.weatherproofMinSPLdBA1mAt25W} dB(A) @ 1 m / 25 W`],
+      ["Flameproof minimum output", technicalSpec.flameproofMinSPLdBA1mAt25W == null ? "" : `${technicalSpec.flameproofMinSPLdBA1mAt25W} dB(A) @ 1 m / 25 W`],
+      ["Mounting", technicalSpec.mounting],
+      ["Hazardous-area basis", technicalSpec.hazardousArea],
+      ["Bid noise zoning", technicalSpec.bidNoiseZoning],
+      ["Preliminary acoustic basis", technicalSpec.preliminaryAcousticBasis],
+      ["High-noise design note", technicalSpec.highNoiseDesignNote],
+      ["Final design requirement", technicalSpec.finalDesignRequirement],
+    ].filter(([, value]) => value !== "" && value != null && value !== 0) : [];
+    const materialDetailsHtml = materialDetailRows.length ? `
+      <div class="section-kicker">Imported material configuration</div>
+      <dl class="coverage-basis-grid material-detail-grid">
+        ${materialDetailRows.map(([label, value]) => {
+          const wide = String(materialDetailText(value)).length > 64 ? " class=\"wide\"" : "";
+          return `<div${wide}><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(materialDetailText(value))}</dd></div>`;
+        }).join("")}
+      </dl>` : "";
     const coverageBasisHtml = `
       <div class="section-kicker">Coverage design basis</div>
       <dl class="coverage-basis-grid">
@@ -5425,6 +5605,7 @@ kbd {
           <div class="summary-cell"><span>Confidence</span><strong>${source.confidence === "sourced" ? "Sourced" : source.confidence === "user" ? "User" : "Verify"}</strong></div>
         </div>
         ${coverageBasisHtml}
+        ${materialDetailsHtml}
         <div class="section-kicker">Equipment qualification</div>
         <label class="field full"><span>Loudspeaker class</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
         ${requirementNote}
