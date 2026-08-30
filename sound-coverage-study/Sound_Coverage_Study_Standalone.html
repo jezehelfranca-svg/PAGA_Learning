@@ -318,6 +318,12 @@ summary:focus-visible {
   gap: 12px;
 }
 
+.section-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .icon-button,
 .dialog-close {
   display: inline-grid;
@@ -702,6 +708,25 @@ input[type="range"] {
   color: var(--ink-faint);
   font-size: 9px;
   line-height: 1.5;
+}
+
+.datum-help {
+  margin: -1px 0 0;
+}
+
+.inline-help {
+  padding: 0;
+  border: 0;
+  color: var(--teal-700);
+  background: transparent;
+  font-size: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.inline-help:hover {
+  color: var(--teal-600);
 }
 
 .workspace {
@@ -1473,6 +1498,131 @@ kbd {
   gap: 22px;
 }
 
+.guide-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.guide-layout h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  counter-reset: guide-step;
+  list-style: none;
+}
+
+.guide-steps li {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-height: 104px;
+  padding: 13px 13px 13px 47px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  counter-increment: guide-step;
+}
+
+.guide-steps li::before {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: var(--teal-700);
+  content: counter(guide-step);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.guide-steps strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.guide-steps span,
+.guide-reference > p,
+.reference-examples p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.guide-reference {
+  display: grid;
+  gap: 11px;
+  padding: 16px;
+  border: 1px solid #bbd7ca;
+  border-radius: var(--radius);
+  background: var(--green-soft);
+}
+
+.guide-reference h3,
+.guide-reference .section-kicker {
+  margin: 0;
+}
+
+.definition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.definition-grid div {
+  padding: 10px;
+  border: 1px solid rgba(24, 81, 84, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.definition-grid dt {
+  color: var(--teal-700);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.definition-grid dd {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.reference-examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.reference-examples article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.reference-examples strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--teal-700);
+  font-size: 11px;
+}
+
 .reference-layout h3 {
   margin: 0 0 10px;
   font-size: 13px;
@@ -1865,6 +2015,7 @@ kbd {
       <button class="button ghost" id="importButton" type="button">Import</button>
       <button class="button ghost" id="exportButton" type="button">Export</button>
       <button class="button ghost" id="csvButton" type="button">Grid CSV</button>
+      <button class="button ghost" id="guideButton" type="button">Guide</button>
       <button class="button ghost" id="referencesButton" type="button">References</button>
       <button class="button primary" id="printButton" type="button">Print study</button>
     </nav>
@@ -1896,7 +2047,10 @@ kbd {
             <div class="section-kicker">System</div>
             <h2>Study basis</h2>
           </div>
-          <button class="icon-button" id="criteriaInfoButton" type="button" aria-label="Open source criteria">i</button>
+          <div class="section-heading-actions">
+            <button class="button compact" id="panelGuideButton" type="button">Guide</button>
+            <button class="icon-button" id="criteriaInfoButton" type="button" aria-label="Open engineering criteria and references">i</button>
+          </div>
         </div>
         <div class="mode-switch" role="radiogroup" aria-label="System type">
           <button class="mode-option active" type="button" data-mode="paging" role="radio" aria-checked="true"><span>IPPS</span><small>Paging</small></button>
@@ -1982,7 +2136,7 @@ kbd {
             <input data-project-field="requiredMargin" type="number" min="0" max="60" step="0.5">
           </label>
           <label class="field">
-            <span>Absolute minimum <b id="minimumUnit">dBA</b></span>
+            <span>Coverage floor <b id="minimumUnit">dBA</b></span>
             <input data-project-field="minimumLevel" type="number" min="0" max="180" step="0.5">
           </label>
           <label class="field">
@@ -2005,11 +2159,11 @@ kbd {
         </label>
         <div class="field-grid two">
           <label class="field">
-            <span>Weatherproof minimum <b>dBA @ 1 m</b></span>
+            <span>Weatherproof rated output <b>dBA @ 1 m</b></span>
             <input id="minimumWeatherproofOutput" data-project-field="minimumWeatherproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
           <label class="field">
-            <span>Flameproof minimum <b>dBA @ 1 m</b></span>
+            <span>Flameproof rated output <b>dBA @ 1 m</b></span>
             <input id="minimumFlameproofOutput" data-project-field="minimumFlameproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
         </div>
@@ -2151,6 +2305,57 @@ kbd {
       </section>
     </aside>
   </main>
+
+  <dialog class="modal guide-modal" id="guideDialog" aria-labelledby="guideTitle">
+    <div class="modal-header">
+      <div>
+        <div class="section-kicker">In-app help</div>
+        <h2 id="guideTitle">Sound coverage study guide</h2>
+      </div>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body guide-layout">
+      <section class="method-callout">
+        <div class="method-icon" aria-hidden="true">1-7</div>
+        <div>
+          <strong>Recommended workflow</strong>
+          <p>Set the project basis first, calibrate the plan, define each receiver requirement, then configure and place sources. Check both area compliance and loudspeaker equipment qualification before printing the study.</p>
+        </div>
+      </section>
+      <ol class="guide-steps">
+        <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
+        <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
+        <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
+        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum. Then set its operating tap, rated power, class, mounting height, aim, directivity, and verified losses.</span></li>
+        <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
+        <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
+        <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. Export the project JSON and grid CSV, then print the study.</span></li>
+      </ol>
+      <section class="guide-reference" id="referenceConditionGuide">
+        <div class="section-kicker">Source input</div>
+        <h3>What the reference condition does</h3>
+        <p>The reference condition is the known loudspeaker sound level at a stated distance and electrical power. It anchors the propagation calculation:</p>
+        <div class="formula-card"><code>L<sub>p</sub> = L<sub>ref</sub> + 10 log<sub>10</sub>(P<sub>tap</sub>/P<sub>ref</sub>) - 20 log<sub>10</sub>(r/r<sub>ref</sub>) - losses</code></div>
+        <dl class="definition-grid">
+          <div><dt>Reference SPL</dt><dd>The datasheet sound level at the stated test distance and test power.</dd></div>
+          <div><dt>Reference distance</dt><dd>The distance used for that datasheet value, commonly 1 m.</dd></div>
+          <div><dt>Reference power</dt><dd>The electrical power used for that datasheet value, commonly 1 W for sensitivity.</dd></div>
+          <div><dt>Near-field clamp</dt><dd>The closest distance at which the distance-loss formula is allowed to increase level.</dd></div>
+          <div><dt>Tap / operating power</dt><dd>The transformer tap actually used by the coverage calculation and amplifier-load total.</dd></div>
+          <div><dt>Rated power</dt><dd>The loudspeaker capacity used to check the weatherproof or flameproof output requirement at 1 m.</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h3>Choose one valid datasheet convention</h3>
+        <div class="reference-examples">
+          <article><strong>Sensitivity convention</strong><p>If the datasheet states 105 dBA at 1 W / 1 m, enter Reference SPL 105, Reference distance 1 m, and Reference power 1 W. A 25 W tap adds about 14 dB before distance and other losses.</p></article>
+          <article><strong>Rated-output convention</strong><p>If the datasheet states 124 dBA at rated 25 W / 1 m, enter Reference SPL 124, Reference distance 1 m, and Reference power 25 W. Do not enter 1 W unless 124 dBA is explicitly a 1 W sensitivity value.</p></article>
+        </div>
+        <div class="caution-box"><strong>Avoid double-counting power</strong><p>Reference SPL and Reference power must describe the same test condition. The app then adjusts that datum to the selected operating tap.</p></div>
+      </section>
+      <div class="dialog-actions"><button class="button primary" type="button" data-close-dialog>Start working</button></div>
+    </div>
+  </dialog>
 
   <dialog class="modal" id="referencesDialog" aria-labelledby="referencesTitle">
     <div class="modal-header">
@@ -3530,6 +3735,7 @@ kbd {
   const objectList = document.getElementById("objectList");
   const mapTooltip = document.getElementById("mapTooltip");
   const toast = document.getElementById("toast");
+  const guideDialog = document.getElementById("guideDialog");
   const referencesDialog = document.getElementById("referencesDialog");
   const confirmDialog = document.getElementById("confirmDialog");
   const autoPlaceDialog = document.getElementById("autoPlaceDialog");
@@ -4498,14 +4704,18 @@ kbd {
           ${batchNumber("Horizontal beam width", "beamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
           ${batchNumber("Vertical beam width", "verticalBeamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
         </div>
-        <div class="section-kicker">Reference condition & power</div>
+        <div class="section-kicker">Manufacturer acoustic datum</div>
         <div class="field-grid two">
           ${batchNumber("Reference SPL", "referenceSpl", { min: 0, max: 180, step: 0.1, unit: decibelUnit() })}
           ${batchNumber("Reference distance", "referenceDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
           ${batchNumber("Reference power", "referencePower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumber("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+        </div>
+        <p class="microcopy datum-help">These reference values must describe one manufacturer test condition. <button class="inline-help" type="button" data-open-guide>What does this mean?</button></p>
+        <div class="section-kicker">Operating & rating</div>
+        <div class="field-grid two">
           ${batchNumber("Tap / operating power", "tapPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
           ${batchNumber("Rated power", "ratedPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
-          ${batchNumber("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
         </div>
         <div class="section-kicker">Losses & circuit</div>
         <div class="field-grid two">
@@ -4602,14 +4812,18 @@ kbd {
           ${numberField("Azimuth", "azimuth", source.azimuth, { min: 0, max: 360, step: 1, unit: "°" })}
           ${numberField("Elevation aim", "elevation", source.elevation ?? 0, { min: -90, max: 90, step: 1, unit: "°" })}
         </div>
-        <div class="section-kicker">Reference condition</div>
+        <div class="section-kicker">Manufacturer acoustic datum</div>
         <div class="field-grid two">
           ${numberField("Reference SPL", "referenceSpl", source.referenceSpl, { min: 0, max: 180, step: 0.1, unit: `dB${source.weighting || ""}` })}
           ${numberField("Reference distance", "referenceDistance", source.referenceDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
           ${numberField("Reference power", "referencePower", source.referencePower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
+          ${numberField("Near-field clamp", "nearFieldDistance", source.nearFieldDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+        </div>
+        <p class="microcopy datum-help">Copy one complete acoustic test condition from the approved datasheet. <button class="inline-help" type="button" data-open-guide>What does this mean?</button></p>
+        <div class="section-kicker">Operating & rating</div>
+        <div class="field-grid two">
           ${numberField("Tap / operating power", "tapPower", source.tapPower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
           ${numberField("Rated power", "ratedPower", source.ratedPower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
-          ${numberField("Near-field clamp", "nearFieldDistance", source.nearFieldDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
         </div>
         <div class="section-kicker">Direction & losses</div>
         <div class="field-grid two">
@@ -5521,7 +5735,7 @@ kbd {
       </div>
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
-        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Absolute minimum</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment minimum</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
+        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
         <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
       <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="9">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
@@ -5834,6 +6048,10 @@ kbd {
       applySelectedSourceBatch();
     });
     inspector.addEventListener("click", (event) => {
+      if (event.target.closest("[data-open-guide]")) {
+        guideDialog.showModal();
+        return;
+      }
       const button = event.target.closest("[data-object-action]");
       if (!button) return;
       if (button.dataset.objectAction === "delete" || button.dataset.objectAction === "delete-selected") requestDeleteSelected();
@@ -5939,6 +6157,8 @@ kbd {
       updatePrintReport();
       window.setTimeout(() => window.print(), 60);
     });
+    document.getElementById("guideButton").addEventListener("click", () => guideDialog.showModal());
+    document.getElementById("panelGuideButton").addEventListener("click", () => guideDialog.showModal());
     document.getElementById("referencesButton").addEventListener("click", () => referencesDialog.showModal());
     document.getElementById("criteriaInfoButton").addEventListener("click", () => referencesDialog.showModal());
     document.querySelectorAll("[data-close-dialog]").forEach((button) => {

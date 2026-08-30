@@ -20,6 +20,7 @@
   const objectList = document.getElementById("objectList");
   const mapTooltip = document.getElementById("mapTooltip");
   const toast = document.getElementById("toast");
+  const guideDialog = document.getElementById("guideDialog");
   const referencesDialog = document.getElementById("referencesDialog");
   const confirmDialog = document.getElementById("confirmDialog");
   const autoPlaceDialog = document.getElementById("autoPlaceDialog");
@@ -988,14 +989,18 @@
           ${batchNumber("Horizontal beam width", "beamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
           ${batchNumber("Vertical beam width", "verticalBeamWidth", { min: 1, max: 360, step: 1, unit: "°" })}
         </div>
-        <div class="section-kicker">Reference condition & power</div>
+        <div class="section-kicker">Manufacturer acoustic datum</div>
         <div class="field-grid two">
           ${batchNumber("Reference SPL", "referenceSpl", { min: 0, max: 180, step: 0.1, unit: decibelUnit() })}
           ${batchNumber("Reference distance", "referenceDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
           ${batchNumber("Reference power", "referencePower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
+          ${batchNumber("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+        </div>
+        <p class="microcopy datum-help">These reference values must describe one manufacturer test condition. <button class="inline-help" type="button" data-open-guide>What does this mean?</button></p>
+        <div class="section-kicker">Operating & rating</div>
+        <div class="field-grid two">
           ${batchNumber("Tap / operating power", "tapPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
           ${batchNumber("Rated power", "ratedPower", { min: 0.001, max: 100000, step: 0.001, unit: "W" })}
-          ${batchNumber("Near-field clamp", "nearFieldDistance", { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
         </div>
         <div class="section-kicker">Losses & circuit</div>
         <div class="field-grid two">
@@ -1092,14 +1097,18 @@
           ${numberField("Azimuth", "azimuth", source.azimuth, { min: 0, max: 360, step: 1, unit: "°" })}
           ${numberField("Elevation aim", "elevation", source.elevation ?? 0, { min: -90, max: 90, step: 1, unit: "°" })}
         </div>
-        <div class="section-kicker">Reference condition</div>
+        <div class="section-kicker">Manufacturer acoustic datum</div>
         <div class="field-grid two">
           ${numberField("Reference SPL", "referenceSpl", source.referenceSpl, { min: 0, max: 180, step: 0.1, unit: `dB${source.weighting || ""}` })}
           ${numberField("Reference distance", "referenceDistance", source.referenceDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
           ${numberField("Reference power", "referencePower", source.referencePower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
+          ${numberField("Near-field clamp", "nearFieldDistance", source.nearFieldDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
+        </div>
+        <p class="microcopy datum-help">Copy one complete acoustic test condition from the approved datasheet. <button class="inline-help" type="button" data-open-guide>What does this mean?</button></p>
+        <div class="section-kicker">Operating & rating</div>
+        <div class="field-grid two">
           ${numberField("Tap / operating power", "tapPower", source.tapPower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
           ${numberField("Rated power", "ratedPower", source.ratedPower, { min: 0.001, max: 100000, step: 0.1, unit: "W" })}
-          ${numberField("Near-field clamp", "nearFieldDistance", source.nearFieldDistance, { min: 0.1, max: 10000, step: 0.1, unit: "m" })}
         </div>
         <div class="section-kicker">Direction & losses</div>
         <div class="field-grid two">
@@ -2011,7 +2020,7 @@
       </div>
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
-        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Absolute minimum</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment minimum</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
+        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
         <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
       <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="9">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
@@ -2324,6 +2333,10 @@
       applySelectedSourceBatch();
     });
     inspector.addEventListener("click", (event) => {
+      if (event.target.closest("[data-open-guide]")) {
+        guideDialog.showModal();
+        return;
+      }
       const button = event.target.closest("[data-object-action]");
       if (!button) return;
       if (button.dataset.objectAction === "delete" || button.dataset.objectAction === "delete-selected") requestDeleteSelected();
@@ -2429,6 +2442,8 @@
       updatePrintReport();
       window.setTimeout(() => window.print(), 60);
     });
+    document.getElementById("guideButton").addEventListener("click", () => guideDialog.showModal());
+    document.getElementById("panelGuideButton").addEventListener("click", () => guideDialog.showModal());
     document.getElementById("referencesButton").addEventListener("click", () => referencesDialog.showModal());
     document.getElementById("criteriaInfoButton").addEventListener("click", () => referencesDialog.showModal());
     document.querySelectorAll("[data-close-dialog]").forEach((button) => {

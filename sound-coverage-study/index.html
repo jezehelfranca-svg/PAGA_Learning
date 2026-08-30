@@ -35,6 +35,7 @@
       <button class="button ghost" id="importButton" type="button">Import</button>
       <button class="button ghost" id="exportButton" type="button">Export</button>
       <button class="button ghost" id="csvButton" type="button">Grid CSV</button>
+      <button class="button ghost" id="guideButton" type="button">Guide</button>
       <button class="button ghost" id="referencesButton" type="button">References</button>
       <button class="button primary" id="printButton" type="button">Print study</button>
     </nav>
@@ -66,7 +67,10 @@
             <div class="section-kicker">System</div>
             <h2>Study basis</h2>
           </div>
-          <button class="icon-button" id="criteriaInfoButton" type="button" aria-label="Open source criteria">i</button>
+          <div class="section-heading-actions">
+            <button class="button compact" id="panelGuideButton" type="button">Guide</button>
+            <button class="icon-button" id="criteriaInfoButton" type="button" aria-label="Open engineering criteria and references">i</button>
+          </div>
         </div>
         <div class="mode-switch" role="radiogroup" aria-label="System type">
           <button class="mode-option active" type="button" data-mode="paging" role="radio" aria-checked="true"><span>IPPS</span><small>Paging</small></button>
@@ -152,7 +156,7 @@
             <input data-project-field="requiredMargin" type="number" min="0" max="60" step="0.5">
           </label>
           <label class="field">
-            <span>Absolute minimum <b id="minimumUnit">dBA</b></span>
+            <span>Coverage floor <b id="minimumUnit">dBA</b></span>
             <input data-project-field="minimumLevel" type="number" min="0" max="180" step="0.5">
           </label>
           <label class="field">
@@ -175,11 +179,11 @@
         </label>
         <div class="field-grid two">
           <label class="field">
-            <span>Weatherproof minimum <b>dBA @ 1 m</b></span>
+            <span>Weatherproof rated output <b>dBA @ 1 m</b></span>
             <input id="minimumWeatherproofOutput" data-project-field="minimumWeatherproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
           <label class="field">
-            <span>Flameproof minimum <b>dBA @ 1 m</b></span>
+            <span>Flameproof rated output <b>dBA @ 1 m</b></span>
             <input id="minimumFlameproofOutput" data-project-field="minimumFlameproofOutput" type="number" min="0" max="180" step="0.1">
           </label>
         </div>
@@ -321,6 +325,57 @@
       </section>
     </aside>
   </main>
+
+  <dialog class="modal guide-modal" id="guideDialog" aria-labelledby="guideTitle">
+    <div class="modal-header">
+      <div>
+        <div class="section-kicker">In-app help</div>
+        <h2 id="guideTitle">Sound coverage study guide</h2>
+      </div>
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body guide-layout">
+      <section class="method-callout">
+        <div class="method-icon" aria-hidden="true">1-7</div>
+        <div>
+          <strong>Recommended workflow</strong>
+          <p>Set the project basis first, calibrate the plan, define each receiver requirement, then configure and place sources. Check both area compliance and loudspeaker equipment qualification before printing the study.</p>
+        </div>
+      </section>
+      <ol class="guide-steps">
+        <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
+        <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
+        <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
+        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum. Then set its operating tap, rated power, class, mounting height, aim, directivity, and verified losses.</span></li>
+        <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
+        <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
+        <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. Export the project JSON and grid CSV, then print the study.</span></li>
+      </ol>
+      <section class="guide-reference" id="referenceConditionGuide">
+        <div class="section-kicker">Source input</div>
+        <h3>What the reference condition does</h3>
+        <p>The reference condition is the known loudspeaker sound level at a stated distance and electrical power. It anchors the propagation calculation:</p>
+        <div class="formula-card"><code>L<sub>p</sub> = L<sub>ref</sub> + 10 log<sub>10</sub>(P<sub>tap</sub>/P<sub>ref</sub>) - 20 log<sub>10</sub>(r/r<sub>ref</sub>) - losses</code></div>
+        <dl class="definition-grid">
+          <div><dt>Reference SPL</dt><dd>The datasheet sound level at the stated test distance and test power.</dd></div>
+          <div><dt>Reference distance</dt><dd>The distance used for that datasheet value, commonly 1 m.</dd></div>
+          <div><dt>Reference power</dt><dd>The electrical power used for that datasheet value, commonly 1 W for sensitivity.</dd></div>
+          <div><dt>Near-field clamp</dt><dd>The closest distance at which the distance-loss formula is allowed to increase level.</dd></div>
+          <div><dt>Tap / operating power</dt><dd>The transformer tap actually used by the coverage calculation and amplifier-load total.</dd></div>
+          <div><dt>Rated power</dt><dd>The loudspeaker capacity used to check the weatherproof or flameproof output requirement at 1 m.</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h3>Choose one valid datasheet convention</h3>
+        <div class="reference-examples">
+          <article><strong>Sensitivity convention</strong><p>If the datasheet states 105 dBA at 1 W / 1 m, enter Reference SPL 105, Reference distance 1 m, and Reference power 1 W. A 25 W tap adds about 14 dB before distance and other losses.</p></article>
+          <article><strong>Rated-output convention</strong><p>If the datasheet states 124 dBA at rated 25 W / 1 m, enter Reference SPL 124, Reference distance 1 m, and Reference power 25 W. Do not enter 1 W unless 124 dBA is explicitly a 1 W sensitivity value.</p></article>
+        </div>
+        <div class="caution-box"><strong>Avoid double-counting power</strong><p>Reference SPL and Reference power must describe the same test condition. The app then adjusts that datum to the selected operating tap.</p></div>
+      </section>
+      <div class="dialog-actions"><button class="button primary" type="button" data-close-dialog>Start working</button></div>
+    </div>
+  </dialog>
 
   <dialog class="modal" id="referencesDialog" aria-labelledby="referencesTitle">
     <div class="modal-header">

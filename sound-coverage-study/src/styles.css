@@ -308,6 +308,12 @@ summary:focus-visible {
   gap: 12px;
 }
 
+.section-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .icon-button,
 .dialog-close {
   display: inline-grid;
@@ -692,6 +698,25 @@ input[type="range"] {
   color: var(--ink-faint);
   font-size: 9px;
   line-height: 1.5;
+}
+
+.datum-help {
+  margin: -1px 0 0;
+}
+
+.inline-help {
+  padding: 0;
+  border: 0;
+  color: var(--teal-700);
+  background: transparent;
+  font-size: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.inline-help:hover {
+  color: var(--teal-600);
 }
 
 .workspace {
@@ -1461,6 +1486,131 @@ kbd {
 .reference-layout {
   display: grid;
   gap: 22px;
+}
+
+.guide-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.guide-layout h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  counter-reset: guide-step;
+  list-style: none;
+}
+
+.guide-steps li {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-height: 104px;
+  padding: 13px 13px 13px 47px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  counter-increment: guide-step;
+}
+
+.guide-steps li::before {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: var(--teal-700);
+  content: counter(guide-step);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.guide-steps strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.guide-steps span,
+.guide-reference > p,
+.reference-examples p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.guide-reference {
+  display: grid;
+  gap: 11px;
+  padding: 16px;
+  border: 1px solid #bbd7ca;
+  border-radius: var(--radius);
+  background: var(--green-soft);
+}
+
+.guide-reference h3,
+.guide-reference .section-kicker {
+  margin: 0;
+}
+
+.definition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.definition-grid div {
+  padding: 10px;
+  border: 1px solid rgba(24, 81, 84, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.definition-grid dt {
+  color: var(--teal-700);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.definition-grid dd {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.reference-examples {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.reference-examples article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.reference-examples strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--teal-700);
+  font-size: 11px;
 }
 
 .reference-layout h3 {
