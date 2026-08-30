@@ -503,3 +503,79 @@ test("rectangle resize keeps the opposite corner fixed and respects plan bounds"
     { x: 5, y: 2, width: 10, depth: 11 },
   );
 });
+
+test("project export satisfies the Telecom MTO 2.4 session contract and maps source layout", () => {
+  const project = simpleProject();
+  project.title = "Compatibility";
+  project.width = 20;
+  project.depth = 10;
+  project.sources = [source({
+    id: "horn-1",
+    name: "SPK-001",
+    model: "Horn X",
+    x: 5,
+    y: 4,
+    z: 3,
+    azimuth: 270,
+    elevation: -8,
+    tapPower: 25,
+    ratedPower: 25,
+    loop: "L2",
+    outputRequirement: "outdoorWeatherproof",
+  })];
+  const session = Model.buildMtoProjectSession(project);
+  assert.equal(session.version, "2.4");
+  assert.ok(session.calibration);
+  assert.ok(Array.isArray(session.materials));
+  assert.ok(Array.isArray(session.takeoffs));
+  assert.equal(session.materials.length, 1);
+  assert.equal(session.takeoffs.length, 1);
+  assert.deepEqual(session.takeoffs[0].points[0], { x: 50, y: 40 });
+  assert.ok(Math.abs(session.takeoffs[0].angle - (3 * Math.PI) / 2) < 1e-9);
+  assert.equal(session.takeoffs[0].metadata.tagName, "SPK-001");
+  assert.equal(session.takeoffs[0].metadata.panelCircuit, "L2");
+  assert.equal(session.takeoffs[0].metadata.powerW, "25");
+  assert.equal(session.takeoffs[0].metadata.pagaAcoustic.outputRequirement, "outdoorWeatherproof");
+  assert.equal(session.materials[0].coverage.type, "paga");
+});
+
+test("compatible session stores an imported background once and restores it on Sound Coverage import", () => {
+  const project = simpleProject();
+  const backgroundImage = "data:image/png;base64,AAAA";
+  project.width = 20;
+  project.depth = 10;
+  project.backgroundImage = backgroundImage;
+  project.backgroundName = "plan.png";
+  project.backgroundPixelWidth = 200;
+  project.backgroundPixelHeight = 100;
+  const session = Model.buildMtoProjectSession(project);
+  assert.equal(session.backgroundImage, "");
+  assert.equal(session.drawingSource.content, backgroundImage);
+  assert.equal(session.drawingSource.name, "plan.png");
+  assert.deepEqual(session.canvasState, { width: 200, height: 100, originalPageWidth: 200 });
+  const restored = Model.sanitizeProject(Model.soundCoverageProjectFromSession(session));
+  assert.equal(restored.backgroundImage, backgroundImage);
+  assert.equal(restored.backgroundName, "plan.png");
+  assert.equal(restored.backgroundPixelWidth, 200);
+  assert.equal(restored.backgroundPixelHeight, 100);
+});
+
+test("compatible session shares MTO materials only when source acoustic configurations match", () => {
+  const project = simpleProject();
+  project.sources = [
+    source({ id: "a", name: "SPK-A", x: 1, y: 1, tapPower: 10, ratedPower: 25 }),
+    source({ id: "b", name: "SPK-B", x: 2, y: 2, tapPower: 10, ratedPower: 25 }),
+    source({ id: "c", name: "SPK-C", x: 3, y: 3, tapPower: 20, ratedPower: 25 }),
+  ];
+  const session = Model.buildMtoProjectSession(project);
+  assert.equal(session.takeoffs.length, 3);
+  assert.equal(session.materials.length, 2);
+  assert.equal(session.takeoffs[0].materialId, session.takeoffs[1].materialId);
+  assert.notEqual(session.takeoffs[0].materialId, session.takeoffs[2].materialId);
+});
+
+test("legacy Sound Coverage JSON remains importable through the compatibility helper", () => {
+  const project = simpleProject();
+  project.title = "Legacy project";
+  assert.equal(Model.soundCoverageProjectFromSession(project).title, "Legacy project");
+});

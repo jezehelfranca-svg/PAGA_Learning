@@ -33,7 +33,7 @@
     <nav class="header-actions" aria-label="Project actions">
       <button class="button ghost" id="newProjectButton" type="button">New</button>
       <button class="button ghost" id="importButton" type="button">Import</button>
-      <button class="button ghost" id="exportButton" type="button">Export</button>
+      <button class="button ghost" id="exportButton" type="button" title="Export a JSON session compatible with Sound Coverage and Telecom MTO Lite">Export</button>
       <button class="button ghost" id="csvButton" type="button">Grid CSV</button>
       <button class="button ghost" id="guideButton" type="button">Guide</button>
       <button class="button ghost" id="referencesButton" type="button">References</button>
@@ -349,7 +349,7 @@
         <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum. Then set its operating tap, rated power, class, mounting height, aim, directivity, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
-        <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. Export the project JSON and grid CSV, then print the study.</span></li>
+        <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. <b>Export</b> creates one JSON that can be reopened here or loaded in Telecom MTO Lite under <b>Setup &gt; Project &gt; Load</b>. Export the grid CSV separately, then print the study.</span></li>
       </ol>
       <section class="guide-reference" id="referenceConditionGuide">
         <div class="section-kicker">Source input</div>

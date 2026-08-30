@@ -1099,6 +1099,320 @@
     };
   }
 
+  function mtoSafeIdentifier(value, fallback) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80);
+    return normalized || fallback;
+  }
+
+  function mtoDataUrlSize(dataUrl) {
+    const text = String(dataUrl || "");
+    const comma = text.indexOf(",");
+    if (comma < 0) return 0;
+    const payload = text.slice(comma + 1);
+    if (!/;base64,/i.test(text.slice(0, comma + 1))) {
+      try {
+        return decodeURIComponent(payload).length;
+      } catch (error) {
+        return payload.length;
+      }
+    }
+    const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
+  }
+
+  function mtoDataUrlMimeType(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:([^;,]+)/i);
+    return match ? match[1] : "image/png";
+  }
+
+  function maximumProjectTarget(project) {
+    let target = targetForNoise(project, project.ambientLevel);
+    (project.noiseZones || []).forEach((zone) => {
+      if (zone && zone.enabled !== false) target = Math.max(target, targetForNoiseZone(project, zone));
+    });
+    return target;
+  }
+
+  function mtoSourceAcousticValues(project, source, target) {
+    const referenceSpl = finiteNumber(source.referenceSpl, 0);
+    const referenceDistance = Math.max(EPSILON, finiteNumber(source.referenceDistance, 1));
+    const referencePower = Math.max(EPSILON, finiteNumber(source.referencePower, 1));
+    const tapPower = Math.max(EPSILON, finiteNumber(source.tapPower, referencePower));
+    const sensitivity = referenceSpl + 10 * Math.log10(1 / referencePower) - 20 * Math.log10(1 / referenceDistance);
+    const tapOutputAtOneMetre = referenceSpl + 10 * Math.log10(tapPower / referencePower) - 20 * Math.log10(1 / referenceDistance);
+    const fixedLoss = Math.max(0, finiteNumber(project.fixedLoss, 0));
+    const additionalLoss = Math.max(0, finiteNumber(source.additionalLoss, 0));
+    const airLossPerMetre = Math.max(0, finiteNumber(project.airLossPer100m, 0)) / 100;
+    const nearFieldDistance = Math.max(0.01, finiteNumber(source.nearFieldDistance, 1));
+    const levelAtDistance = (distance) => {
+      const effectiveDistance = Math.max(nearFieldDistance, distance);
+      return tapOutputAtOneMetre
+        - fixedLoss
+        - additionalLoss
+        - 20 * Math.log10(effectiveDistance)
+        - airLossPerMetre * effectiveDistance;
+    };
+
+    let lower = nearFieldDistance;
+    let upper = Math.max(1, lower);
+    if (levelAtDistance(lower) >= target) {
+      while (upper < 10000 && levelAtDistance(upper) >= target) upper = Math.min(10000, upper * 2);
+      if (levelAtDistance(upper) < target) {
+        for (let iteration = 0; iteration < 48; iteration += 1) {
+          const midpoint = (lower + upper) / 2;
+          if (levelAtDistance(midpoint) >= target) lower = midpoint;
+          else upper = midpoint;
+        }
+      } else {
+        lower = upper;
+      }
+    }
+
+    return {
+      sensitivity: Number(sensitivity.toFixed(3)),
+      tapOutputAtOneMetre: Number(tapOutputAtOneMetre.toFixed(3)),
+      radiusM: Number(Math.max(0.1, lower).toFixed(3)),
+    };
+  }
+
+  function buildMtoProjectSession(input) {
+    const project = sanitizeProject(input);
+    const now = new Date().toISOString();
+    const hasBackground = /^data:image\//i.test(project.backgroundImage || "");
+    const backgroundWidth = Math.max(0, finiteNumber(project.backgroundPixelWidth, 0));
+    const backgroundHeight = Math.max(0, finiteNumber(project.backgroundPixelHeight, 0));
+    const defaultPixelsPerUnit = 10;
+    const canvasWidth = hasBackground && backgroundWidth > 0
+      ? Math.round(backgroundWidth)
+      : Math.max(1, Math.round(project.width * defaultPixelsPerUnit));
+    const canvasHeight = hasBackground && backgroundHeight > 0
+      ? Math.round(backgroundHeight)
+      : Math.max(1, Math.round(project.depth * defaultPixelsPerUnit));
+    const xPixelsPerUnit = canvasWidth / Math.max(EPSILON, project.width);
+    const yPixelsPerUnit = canvasHeight / Math.max(EPSILON, project.depth);
+    const pixelsPerUnit = Number(((xPixelsPerUnit + yPixelsPerUnit) / 2).toFixed(6));
+    const target = maximumProjectTarget(project);
+    const criteria = MODE_CRITERIA[project.mode] || MODE_CRITERIA.paging;
+    const materialBySignature = new Map();
+    const materials = [];
+    const takeoffs = [];
+    const hiddenMaterialIds = new Set();
+
+    (project.sources || []).forEach((source, index) => {
+      const acoustic = mtoSourceAcousticValues(project, source, target);
+      const requirement = evaluateSourceOutputRequirement(source, project);
+      const directional = finiteNumber(source.beamWidth, 360) < 180 || project.mode === "siren";
+      const symbol = directional ? "speaker" : "paga_speaker_a";
+      const color = project.mode === "siren" ? "#dc2626" : directional ? "#f97316" : "#eab308";
+      const layer = project.mode === "siren" ? "E-PA-EQUP-SIRN" : directional ? "E-PA-EQUP-HORN" : "E-PA-EQUP-SPKR";
+      const signature = JSON.stringify([
+        source.model,
+        source.presetKey,
+        source.weighting,
+        source.referenceSpl,
+        source.referenceDistance,
+        source.referencePower,
+        source.tapPower,
+        source.ratedPower,
+        source.beamWidth,
+        source.additionalLoss,
+        requirement.key,
+        source.enabled !== false,
+      ]);
+      let material = materialBySignature.get(signature);
+      if (!material) {
+        const materialId = `paga-mat-${materials.length + 1}`;
+        const modelName = String(source.model || source.name || "PAGA loudspeaker").trim();
+        material = {
+          id: materialId,
+          name: `${modelName} (${Number(source.tapPower.toFixed(3))} W)`,
+          type: "point",
+          category: "PAGA",
+          color,
+          unit: "pcs",
+          layer,
+          waste: 0,
+          slack: 0,
+          isAerial: false,
+          w: 0,
+          T: 1,
+          symbol,
+          powerW: Number(source.tapPower.toFixed(3)),
+          coverage: {
+            type: "paga",
+            enabled: true,
+            spl: acoustic.tapOutputAtOneMetre,
+            sensitivity: acoustic.sensitivity,
+            power: Number(source.tapPower.toFixed(3)),
+            ambientNoise: Number(project.ambientLevel.toFixed(3)),
+            targetMargin: Number(project.requiredMargin.toFixed(3)),
+            radiusM: acoustic.radiusM,
+            indoorAttenuation: false,
+            dispersionAngle: Number(source.beamWidth.toFixed(3)),
+            color: `${color}44`,
+          },
+          pagaSourceOutputRequirement: requirement.key,
+        };
+        materialBySignature.set(signature, material);
+        materials.push(material);
+        if (source.enabled === false) hiddenMaterialIds.add(materialId);
+      }
+
+      const sourceId = mtoSafeIdentifier(source.id, `source-${index + 1}`);
+      const tagName = String(source.name || `PAGA source ${index + 1}`).trim();
+      const outputClass = requirement.key === "outdoorWeatherproof"
+        ? "Weatherproof"
+        : requirement.key === "outdoorFlameproof"
+          ? "Flameproof / hazardous area"
+          : "Unclassified";
+      takeoffs.push({
+        id: `takeoff-paga-${sourceId}-${index + 1}`,
+        materialId: material.id,
+        type: "point",
+        points: [{
+          x: Number((source.x * xPixelsPerUnit).toFixed(3)),
+          y: Number((source.y * yPixelsPerUnit).toFixed(3)),
+        }],
+        page: 1,
+        physicalValue: 1,
+        angle: degreesToRadians(normalizeAngle(source.azimuth)),
+        zone: "Default",
+        metadata: {
+          tagName,
+          originalTagName: tagName,
+          mtoUid: `MTO-PAGA-${index + 1}`,
+          scheduleType: "Equipment List",
+          system: "PAGA",
+          subsystem: criteria.label,
+          equipmentType: source.model || source.name || "PAGA loudspeaker",
+          area: "Default",
+          drawingRef: project.backgroundName || project.title,
+          location: `X ${Number(source.x.toFixed(3))} m, Y ${Number(source.y.toFixed(3))} m`,
+          mounting: `Height ${Number(source.z.toFixed(3))} m; elevation aim ${Number(source.elevation.toFixed(3))} deg`,
+          model: source.model || "",
+          powerW: String(Number(source.tapPower.toFixed(3))),
+          panelCircuit: source.loop || "",
+          ipRating: requirement.key === "outdoorWeatherproof" ? outputClass : "",
+          exRating: requirement.key === "outdoorFlameproof" ? outputClass : "",
+          datasheetRef: source.provenance || "",
+          remarks: `Imported from Sound Coverage Study; azimuth ${Number(source.azimuth.toFixed(3))} deg; ${outputClass}; ${source.enabled === false ? "excluded from acoustic study" : "included in acoustic study"}.`,
+          pagaAcoustic: {
+            sourceId: source.id,
+            weighting: source.weighting,
+            referenceSpl: source.referenceSpl,
+            referenceDistance: source.referenceDistance,
+            referencePower: source.referencePower,
+            tapPower: source.tapPower,
+            ratedPower: source.ratedPower,
+            azimuth: source.azimuth,
+            elevation: source.elevation,
+            horizontalBeamWidth: source.beamWidth,
+            verticalBeamWidth: source.verticalBeamWidth,
+            rearAttenuation: source.rearAttenuation,
+            additionalLoss: source.additionalLoss,
+            nearFieldDistance: source.nearFieldDistance,
+            outputRequirement: requirement.key,
+            outputRequirementMinimum: requirement.minimumLevel,
+            ratedOutputAtOneMetre: requirement.ratedOutput,
+            coverageTarget: target,
+            enabled: source.enabled !== false,
+          },
+        },
+      });
+    });
+
+    const drawingSource = hasBackground
+      ? {
+          type: "image",
+          name: project.backgroundName || "sound_coverage_background.png",
+          mimeType: mtoDataUrlMimeType(project.backgroundImage),
+          size: mtoDataUrlSize(project.backgroundImage),
+          encoding: "dataUrl",
+          generatedFrom: "paga-sound-coverage-study",
+          content: project.backgroundImage,
+        }
+      : null;
+
+    return {
+      ...project,
+      backgroundImage: hasBackground ? "" : project.backgroundImage,
+      version: "2.4",
+      savedAt: now,
+      documentRef: null,
+      calibration: {
+        pixelsPerUnit,
+        realLength: project.width,
+        unit: "m",
+        tempStart: null,
+        tempEnd: null,
+        ratio: null,
+        basePoint: null,
+      },
+      materials,
+      takeoffs,
+      routeSegments: [],
+      routeNodes: [],
+      annotations: [],
+      projectZones: ["Default"],
+      activeZone: "Default",
+      pageNum: 1,
+      currentZoom: 1,
+      globalSymbolScale: 1,
+      globalLabelScale: 1,
+      coverageVisible: true,
+      linearLabelVisibility: {},
+      equipmentLabelVisibility: {},
+      hiddenMaterialIds: Array.from(hiddenMaterialIds),
+      selectedTakeoffId: null,
+      selectedTakeoffIds: [],
+      canvasState: {
+        width: canvasWidth,
+        height: canvasHeight,
+        originalPageWidth: canvasWidth,
+      },
+      cadState: null,
+      drawingSource,
+      drawingSnapshot: null,
+      cadReference: null,
+      customSvgSymbols: [],
+      wbsZones: [],
+      pagaCompatibility: {
+        format: "PAGA Sound Coverage + Telecom MTO Project Session",
+        soundCoverageSchemaVersion: project.schemaVersion,
+        telecomMtoProjectStateVersion: "2.4",
+        generatedAt: now,
+        sourceCount: project.sources.length,
+        materialCount: materials.length,
+        maximumCoverageTarget: target,
+        backgroundStoredIn: drawingSource ? "drawingSource.content" : null,
+        limitations: "Telecom MTO receives source layout and screening contours. Sound Coverage noise zones, obstacles, energetic summation, vertical directivity, and compliance-grid results remain authoritative in the Sound Coverage Study fields.",
+      },
+    };
+  }
+
+  function soundCoverageProjectFromSession(input) {
+    const session = input && typeof input === "object" ? input : {};
+    const nested = session.pagaSoundCoverageProject && typeof session.pagaSoundCoverageProject === "object"
+      ? session.pagaSoundCoverageProject
+      : session;
+    const project = { ...nested };
+    if (!project.backgroundImage) {
+      const drawingSource = session.drawingSource || session.drawingSnapshot;
+      const content = drawingSource && typeof drawingSource === "object" ? drawingSource.content : "";
+      if (/^data:image\//i.test(content || "")) {
+        project.backgroundImage = content;
+        if (!project.backgroundName) project.backgroundName = drawingSource.name || "Restored plan background";
+        if (!project.backgroundPixelWidth && session.canvasState) project.backgroundPixelWidth = session.canvasState.width;
+        if (!project.backgroundPixelHeight && session.canvasState) project.backgroundPixelHeight = session.canvasState.height;
+      }
+    }
+    return project;
+  }
+
   function sanitizeProject(input) {
     const mode = input && MODE_CRITERIA[input.mode] ? input.mode : "paging";
     const fallback = createProject(mode);
@@ -1213,6 +1527,8 @@
     clampGroupTranslation,
     resizeRectangle,
     removeProjectObjects,
+    buildMtoProjectSession,
+    soundCoverageProjectFromSession,
     instantiateDevice,
     createProject,
     applyModeCriteria,

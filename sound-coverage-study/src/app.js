@@ -1944,8 +1944,13 @@
   }
 
   function exportProject() {
-    downloadFile(safeFilename(project.title, "json"), JSON.stringify(project, null, 2), "application/json");
-    showToast("Project JSON exported.");
+    const session = Model.buildMtoProjectSession(project);
+    downloadFile(
+      safeFilename(`${project.title}-MTO-Project-Session`, "json"),
+      JSON.stringify(session, null, 2),
+      "application/json"
+    );
+    showToast("Compatible project session exported for Sound Coverage and Telecom MTO Lite.");
   }
 
   function exportCsv() {
@@ -1967,7 +1972,8 @@
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const imported = Model.sanitizeProject(JSON.parse(String(reader.result)));
+        const payload = JSON.parse(String(reader.result));
+        const imported = Model.sanitizeProject(Model.soundCoverageProjectFromSession(payload));
         project = imported;
         clearSelection();
         setPlacementMode(null);
