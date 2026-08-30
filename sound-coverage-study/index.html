@@ -223,6 +223,8 @@
             <span>Device</span>
             <select id="devicePresetSelect"></select>
           </label>
+          <button class="button tool" id="importMaterialButton" type="button" title="Import Telecom MTO Material Configuration or Project Session JSON"><span class="tool-symbol">M</span> Import materials</button>
+          <input id="materialConfigInput" type="file" accept=".json,application/json" hidden>
           <button class="button tool" id="selectSourcesButton" type="button" aria-pressed="false" aria-keyshortcuts="S" title="Select devices (S)"><span class="tool-symbol">▱</span> Select devices <span class="tool-shortcut">S</span></button>
           <button class="button tool primary" id="placeSourceButton" type="button"><span class="tool-symbol">⌁</span> Place source</button>
           <button class="button tool" id="autoPlaceButton" type="button"><span class="tool-symbol">AP</span> Auto-place</button>
@@ -346,7 +348,7 @@
         <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
         <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
         <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
-        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum. Then set its operating tap, rated power, class, mounting height, aim, directivity, and verified losses.</span></li>
+        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles appear in the Device list and keep their MTO material IDs. Then set mounting height, aim, class, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
         <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. <b>Export</b> creates one JSON that can be reopened here or loaded in Telecom MTO Lite under <b>Setup &gt; Project &gt; Load</b>. Export the grid CSV separately, then print the study.</span></li>

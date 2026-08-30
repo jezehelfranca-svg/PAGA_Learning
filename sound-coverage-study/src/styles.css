@@ -1233,6 +1233,38 @@ kbd {
   font-size: 12px;
 }
 
+.coverage-basis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.coverage-basis-grid div {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.coverage-basis-grid dt {
+  color: var(--ink-faint);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.coverage-basis-grid dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .provenance-note {
   padding: 9px 10px;
   border: 1px solid #e6d7bc;

@@ -219,7 +219,7 @@
     document.getElementById("autoComplianceFields").hidden = method !== "compliance";
     document.getElementById("autoManualFields").hidden = method !== "manual";
     const deviceKey = document.getElementById("devicePresetSelect").value;
-    const preset = Model.DEVICE_PRESETS[deviceKey] || Model.DEVICE_PRESETS.custom;
+    const preset = devicePresetForKey(deviceKey);
     const baseTarget = Math.max(project.minimumLevel || 0, (project.ambientLevel || 0) + (project.requiredMargin || 0));
     const designMargin = Number(document.getElementById("autoDesignMargin").value) || 0;
     document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver at or above its local target plus ${round(designMargin, 1)} dB reserve${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
@@ -417,12 +417,59 @@
     document.getElementById("mapEmpty").hidden = summary.sourceCount > 0;
   }
 
-  function populateDevicePresets() {
+  function materialProfileFromKey(key) {
+    if (!String(key || "").startsWith("mto:")) return null;
+    const materialId = String(key).slice(4);
+    return (project.materialProfiles || []).find((material) => material.id === materialId) || null;
+  }
+
+  function devicePresetForKey(key) {
+    const material = materialProfileFromKey(key);
+    return material
+      ? Model.devicePresetFromMtoMaterial(material)
+      : Model.DEVICE_PRESETS[key] || Model.DEVICE_PRESETS.custom;
+  }
+
+  function populateDevicePresets(preferredKey = "") {
     const select = document.getElementById("devicePresetSelect");
-    select.innerHTML = Object.values(Model.DEVICE_PRESETS)
+    const previousKey = preferredKey || select.value;
+    const builtInOptions = Object.values(Model.DEVICE_PRESETS)
       .map((preset) => `<option value="${escapeHtml(preset.key)}">${escapeHtml(preset.name)}</option>`)
       .join("");
-    select.value = project.mode === "siren" ? "siren3200" : "horn25";
+    const importedOptions = (project.materialProfiles || [])
+      .map((material) => `<option value="mto:${escapeHtml(material.id)}">MTO · ${escapeHtml(material.name)}</option>`)
+      .join("");
+    select.innerHTML = `<optgroup label="Built-in profiles">${builtInOptions}</optgroup>${importedOptions ? `<optgroup label="Imported Telecom MTO materials">${importedOptions}</optgroup>` : ""}`;
+    const defaultKey = project.mode === "siren" ? "siren3200" : "horn25";
+    select.value = Array.from(select.options).some((option) => option.value === previousKey) ? previousKey : defaultKey;
+    updateAutoPlacementMethodUI();
+  }
+
+  function importMaterialConfigFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const payload = JSON.parse(String(reader.result));
+        const imported = Model.importPagaMaterialProfiles(payload);
+        if (!imported.length) {
+          showToast("No point materials with PAGA coverage were found in that JSON file.");
+          return;
+        }
+        const merged = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
+        imported.forEach((material) => merged.set(material.id, material));
+        project.materialProfiles = Array.from(merged.values());
+        const selectedKey = `mto:${imported[0].id}`;
+        populateDevicePresets(selectedKey);
+        project.updatedAt = new Date().toISOString();
+        debounceSave();
+        renderInspector();
+        showToast(`${imported.length} PAGA material${imported.length === 1 ? "" : "s"} imported. Select one from the Device list to place or auto-place.`);
+      } catch (error) {
+        console.error(error);
+        showToast("That file is not a valid Telecom MTO Material Configuration or Project Session.");
+      }
+    };
+    reader.readAsText(file);
   }
 
   function loadBackgroundImage() {
@@ -1064,7 +1111,8 @@
   }
 
   function renderSourceInspector(source) {
-    const output = source.referenceSpl + 10 * Math.log10(Math.max(1e-9, source.tapPower) / Math.max(1e-9, source.referencePower));
+    const designBasis = Model.coverageDesignBasis(project, source);
+    const output = designBasis.splAtOneMetre;
     const weightingMismatch = source.weighting && source.weighting !== project.weighting;
     const badgeClass = source.confidence === "sourced" ? "sourced" : "";
     const outputRequirement = Model.evaluateSourceOutputRequirement(source, project);
@@ -1079,6 +1127,31 @@
     } else {
       requirementNote = `<div class="provenance-note"><b>Source is unclassified.</b> Select Weatherproof or Flameproof, or choose a Default source class in Coverage criteria.</div>`;
     }
+    const materialOrigin = designBasis.importedMaterial
+      ? `Imported MTO material: ${escapeHtml(designBasis.materialName)} (${escapeHtml(designBasis.materialId)})`
+      : "Sound Coverage source profile";
+    const attenuationLabel = designBasis.attenuationModel === "indoor"
+      ? "Indoor screening (-3 dB per doubling)"
+      : "Free field (-6 dB per doubling)";
+    const coverageBasisHtml = `
+      <div class="section-kicker">Coverage design basis</div>
+      <dl class="coverage-basis-grid">
+        <div><dt>Coverage type</dt><dd>PAGA</dd></div>
+        <div><dt>Sensitivity</dt><dd>${round(designBasis.sensitivity, 2)} dB @ 1 W / 1 m</dd></div>
+        <div><dt>Tap power</dt><dd>${round(designBasis.tapPower, 3)} W</dd></div>
+        <div><dt>SPL at 1 m</dt><dd>${round(designBasis.splAtOneMetre, 2)} dB${escapeHtml(source.weighting || "")}</dd></div>
+        <div><dt>Ambient noise</dt><dd>${round(designBasis.ambientNoise, 2)} dB${escapeHtml(project.weighting)}</dd></div>
+        <div><dt>Target margin</dt><dd>${round(designBasis.targetMargin, 2)} dB</dd></div>
+        <div><dt>Target SPL</dt><dd>${round(designBasis.targetSpl, 2)} dB${escapeHtml(project.weighting)}</dd></div>
+        <div><dt>Attenuation model</dt><dd>${escapeHtml(attenuationLabel)}</dd></div>
+        <div><dt>Mounting height</dt><dd>${round(designBasis.mountingHeightM, 2)} m</dd></div>
+        <div><dt>Listener ear height</dt><dd>${round(designBasis.listenerEarHeightM, 2)} m</dd></div>
+        <div><dt>Vertical separation</dt><dd>${round(designBasis.verticalSeparationM, 2)} m</dd></div>
+        <div><dt>Dispersion angle</dt><dd>${round(designBasis.dispersionAngle, 1)}° horizontal</dd></div>
+        <div><dt>Coverage radius (plan)</dt><dd>${round(designBasis.planRadiusM, 2)} m</dd></div>
+        <div><dt>Design spacing</dt><dd>${round(designBasis.designSpacingM, 2)} m</dd></div>
+      </dl>
+      <div class="provenance-note ${designBasis.importedMaterial ? "sourced" : ""}"><b>${materialOrigin}.</b> Plan radius accounts for mounting-to-listener vertical separation. Design spacing is radius × √2 for a screening square grid. Project/noise-zone compliance remains authoritative.</div>`;
     inspector.innerHTML = `
       <form class="inspector-form" autocomplete="off">
         ${textField("Tag / name", "name", source.name, { full: true })}
@@ -1087,6 +1160,7 @@
           <div class="summary-cell"><span>Tap output</span><strong>${round(output, 1)} ${escapeHtml(decibelUnit())}</strong></div>
           <div class="summary-cell"><span>Confidence</span><strong>${source.confidence === "sourced" ? "Sourced" : source.confidence === "user" ? "User" : "Verify"}</strong></div>
         </div>
+        ${coverageBasisHtml}
         <div class="section-kicker">Equipment qualification</div>
         <label class="field full"><span>Loudspeaker class</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
         ${requirementNote}
@@ -1397,9 +1471,10 @@
 
   function placeAutoPlacementGrid(gridLayout, deviceKey) {
     let lastSource = null;
+    const preset = devicePresetForKey(deviceKey);
     gridLayout.points.forEach((point) => {
       const sourceNumber = project.sources.length + 1;
-      lastSource = Model.instantiateDevice(deviceKey, {
+      lastSource = Model.instantiateDevice(preset, {
         name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
@@ -1413,7 +1488,7 @@
   }
 
   function completeCompliancePlacement(rect, deviceKey, options) {
-    const result = Model.optimizePlacementGrid(project, deviceKey, rect, options);
+    const result = Model.optimizePlacementGrid(project, devicePresetForKey(deviceKey), rect, options);
     if (result.status === "existing-compliant") {
       setPlacementMode(null);
       showToast(`The area already meets the active target plus ${round(options.designMargin, 1)} dB reserve at all ${result.sampleCount.toLocaleString()} verification points. No additional sources were required.`);
@@ -1551,7 +1626,7 @@
   function addAtPoint(type, point) {
     if (type === "source") {
       const key = document.getElementById("devicePresetSelect").value;
-      const source = Model.instantiateDevice(key, {
+      const source = Model.instantiateDevice(devicePresetForKey(key), {
         name: `SRC-${String(project.sources.length + 1).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
@@ -1975,6 +2050,7 @@
         const payload = JSON.parse(String(reader.result));
         const imported = Model.sanitizeProject(Model.soundCoverageProjectFromSession(payload));
         project = imported;
+        populateDevicePresets();
         clearSelection();
         setPlacementMode(null);
         resetViewZoom();
@@ -2101,6 +2177,12 @@
     document.getElementById("autoPlacementMethod").addEventListener("change", updateAutoPlacementMethodUI);
     document.getElementById("autoDesignMargin").addEventListener("input", updateAutoPlacementMethodUI);
     document.getElementById("devicePresetSelect").addEventListener("change", updateAutoPlacementMethodUI);
+    document.getElementById("importMaterialButton").addEventListener("click", () => document.getElementById("materialConfigInput").click());
+    document.getElementById("materialConfigInput").addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) importMaterialConfigFile(file);
+      event.target.value = "";
+    });
     document.getElementById("startAutoPlaceButton").addEventListener("click", beginAutoPlacement);
     document.getElementById("addNoiseZoneButton").addEventListener("click", () => setPlacementMode("noise"));
     document.getElementById("addObstacleButton").addEventListener("click", () => setPlacementMode("obstacle"));
@@ -2424,6 +2506,7 @@
     document.getElementById("newProjectButton").addEventListener("click", () => confirmDialog.showModal());
     document.getElementById("confirmNewButton").addEventListener("click", () => {
       project = Model.createProject(project.mode);
+      populateDevicePresets();
       clearSelection();
       setPlacementMode(null);
       resetViewZoom();

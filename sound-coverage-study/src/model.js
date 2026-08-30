@@ -667,10 +667,11 @@
   }
 
   function instantiateDevice(key, overrides = {}) {
-    const preset = DEVICE_PRESETS[key] || DEVICE_PRESETS.custom;
+    const preset = key && typeof key === "object" ? key : DEVICE_PRESETS[key] || DEVICE_PRESETS.custom;
     return {
       id: makeId("source"),
-      presetKey: preset.key,
+      presetKey: safeText(preset.key, "custom", 160) || "custom",
+      mtoMaterialId: safeText(preset.mtoMaterialId, "", 160),
       name: preset.name,
       model: preset.model,
       x: 10,
@@ -733,7 +734,7 @@
     const width = mode === "siren" ? 300 : 90;
     const depth = mode === "siren" ? 220 : 60;
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: makeId("study"),
       title: "Sound Coverage Study",
       revision: "A",
@@ -776,6 +777,7 @@
       backgroundDpi: 96,
       backgroundPixelWidth: 0,
       backgroundPixelHeight: 0,
+      materialProfiles: [],
       sources: createExampleSources(mode, width, depth),
       noiseZones: [],
       obstacles: [],
@@ -1024,14 +1026,180 @@
     return (typeof value === "string" ? value : String(fallback ?? "")).slice(0, maximumLength);
   }
 
+  function sanitizeMtoPagaMaterial(input, index = 0) {
+    const value = input && typeof input === "object" ? input : {};
+    const coverageValue = value.coverage && typeof value.coverage === "object" ? value.coverage : {};
+    if (value.type !== "point" || coverageValue.type !== "paga") return null;
+    const materialId = safeText(value.id, `paga-material-${index + 1}`, 160) || `paga-material-${index + 1}`;
+    const baseColor = /^#[0-9a-f]{6}$/i.test(value.color) ? value.color : "#eab308";
+    const coverageColor = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(coverageValue.color)
+      ? coverageValue.color
+      : `${baseColor}44`;
+    const sensitivity = clamp(finiteNumber(coverageValue.sensitivity, 90), 0, 180);
+    const power = clamp(finiteNumber(coverageValue.power, 6), 0.000001, 1000000);
+    const spl = clamp(finiteNumber(coverageValue.spl, sensitivity + 10 * Math.log10(power)), 0, 220);
+    const ambientNoise = clamp(finiteNumber(coverageValue.ambientNoise, 65), 0, 180);
+    const targetMargin = clamp(finiteNumber(coverageValue.targetMargin, 10), 0, 100);
+    const targetSpl = clamp(finiteNumber(coverageValue.targetSpl, ambientNoise + targetMargin), 0, 220);
+    const radiusM = clamp(
+      finiteNumber(coverageValue.radiusM, Math.pow(10, (spl - targetSpl) / (coverageValue.indoorAttenuation ? 10 : 20))),
+      0.01,
+      100000
+    );
+    return {
+      id: materialId,
+      name: safeText(value.name, `Imported PAGA material ${index + 1}`, 240),
+      type: "point",
+      category: safeText(value.category, "PAGA", 120) || "PAGA",
+      color: baseColor,
+      unit: safeText(value.unit, "pcs", 40) || "pcs",
+      layer: safeText(value.layer, "E-PA-EQUP-SPKR", 160) || "E-PA-EQUP-SPKR",
+      waste: clamp(finiteNumber(value.waste, 0), 0, 1000),
+      slack: clamp(finiteNumber(value.slack, 0), 0, 100000),
+      isAerial: Boolean(value.isAerial),
+      w: clamp(finiteNumber(value.w, 0), 0, 100000),
+      T: clamp(finiteNumber(value.T, 1), 0, 1000000),
+      symbol: safeText(value.symbol, "speaker", 160) || "speaker",
+      coverage: {
+        type: "paga",
+        enabled: coverageValue.enabled !== false,
+        spl,
+        sensitivity,
+        power,
+        ambientNoise,
+        targetMargin,
+        targetSpl,
+        radiusM,
+        planRadiusM: clamp(finiteNumber(coverageValue.planRadiusM, radiusM), 0, 100000),
+        slantRadiusM: clamp(finiteNumber(coverageValue.slantRadiusM, radiusM), 0, 100000),
+        indoorAttenuation: Boolean(coverageValue.indoorAttenuation),
+        attenuationModel: coverageValue.indoorAttenuation ? "indoor" : "freefield",
+        dispersionAngle: clamp(finiteNumber(coverageValue.dispersionAngle, 360), 1, 360),
+        verticalDispersionAngle: clamp(finiteNumber(coverageValue.verticalDispersionAngle, 360), 1, 360),
+        mountingHeightM: clamp(finiteNumber(coverageValue.mountingHeightM, 3), 0, 1000),
+        listenerEarHeightM: clamp(finiteNumber(coverageValue.listenerEarHeightM, 1.5), 0, 1000),
+        verticalSeparationM: clamp(finiteNumber(coverageValue.verticalSeparationM, 1.5), 0, 1000),
+        designSpacingM: clamp(finiteNumber(coverageValue.designSpacingM, radiusM * Math.SQRT2), 0, 200000),
+        weighting: ["A", "C", "Z"].includes(coverageValue.weighting) ? coverageValue.weighting : "A",
+        color: coverageColor,
+      },
+    };
+  }
+
+  function importPagaMaterialProfiles(input) {
+    const payload = input && typeof input === "object" ? input : {};
+    const candidates = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.materials)
+        ? payload.materials
+        : payload.material
+          ? [payload.material]
+          : [];
+    const seen = new Set();
+    return candidates
+      .slice(0, 1000)
+      .map((material, index) => sanitizeMtoPagaMaterial(material, index))
+      .filter((material) => {
+        if (!material || seen.has(material.id)) return false;
+        seen.add(material.id);
+        return true;
+      });
+  }
+
+  function devicePresetFromMtoMaterial(material) {
+    const sanitized = sanitizeMtoPagaMaterial(material, 0);
+    if (!sanitized) return null;
+    const coverage = sanitized.coverage;
+    return {
+      key: `mto:${sanitized.id}`,
+      mtoMaterialId: sanitized.id,
+      name: sanitized.name,
+      model: sanitized.name,
+      referenceSpl: coverage.sensitivity,
+      referenceDistance: 1,
+      referencePower: 1,
+      tapPower: coverage.power,
+      ratedPower: coverage.power,
+      beamWidth: coverage.dispersionAngle,
+      verticalBeamWidth: coverage.verticalDispersionAngle,
+      rearAttenuation: 0,
+      nearFieldDistance: 1,
+      sourceHeight: coverage.mountingHeightM,
+      weighting: coverage.weighting,
+      confidence: "user",
+      provenance: `Imported from Telecom MTO Material Configuration: ${sanitized.name} (${sanitized.id}).`,
+    };
+  }
+
+  function coverageDesignBasis(projectInput, sourceInput, materialInput = null) {
+    const project = projectInput && typeof projectInput === "object" ? projectInput : createProject("paging");
+    const source = sourceInput && typeof sourceInput === "object" ? sourceInput : instantiateDevice("custom");
+    const material = materialInput || (project.materialProfiles || []).find((item) => item.id === source.mtoMaterialId) || null;
+    const coverage = material && material.coverage ? material.coverage : null;
+    const referenceDistance = Math.max(EPSILON, finiteNumber(source.referenceDistance, 1));
+    const referencePower = Math.max(EPSILON, finiteNumber(source.referencePower, 1));
+    const tapPower = Math.max(EPSILON, finiteNumber(source.tapPower, referencePower));
+    const sensitivity = finiteNumber(source.referenceSpl, 0)
+      + 10 * Math.log10(1 / referencePower)
+      - 20 * Math.log10(1 / referenceDistance);
+    const splAtOneMetre = sensitivity + 10 * Math.log10(tapPower);
+    const ambientNoise = coverage
+      ? finiteNumber(coverage.ambientNoise, project.ambientLevel)
+      : finiteNumber(project.ambientLevel, 0);
+    const targetMargin = coverage
+      ? finiteNumber(coverage.targetMargin, project.requiredMargin)
+      : finiteNumber(project.requiredMargin, 0);
+    const targetSpl = coverage
+      ? finiteNumber(coverage.targetSpl, ambientNoise + targetMargin)
+      : maximumProjectTarget(project);
+    const indoorAttenuation = Boolean(coverage && coverage.indoorAttenuation);
+    const attenuationFactor = indoorAttenuation ? 10 : 20;
+    const fixedLoss = Math.max(0, finiteNumber(project.fixedLoss, 0));
+    const additionalLoss = Math.max(0, finiteNumber(source.additionalLoss, 0));
+    const freeFieldAcoustic = mtoSourceAcousticValues(project, source, targetSpl);
+    const slantRadiusM = indoorAttenuation
+      ? Math.max(0, Math.pow(10, (splAtOneMetre - targetSpl - fixedLoss - additionalLoss) / attenuationFactor))
+      : freeFieldAcoustic.radiusM;
+    const mountingHeightM = Math.max(0, finiteNumber(source.z, coverage ? coverage.mountingHeightM : 0));
+    const listenerEarHeightM = Math.max(0, finiteNumber(project.receiverHeight, coverage ? coverage.listenerEarHeightM : 0));
+    const verticalSeparationM = Math.abs(mountingHeightM - listenerEarHeightM);
+    const planRadiusM = Math.sqrt(Math.max(0, slantRadiusM * slantRadiusM - verticalSeparationM * verticalSeparationM));
+    return {
+      type: "paga",
+      materialId: material ? material.id : "",
+      materialName: material ? material.name : "",
+      sensitivity: Number(sensitivity.toFixed(3)),
+      tapPower: Number(tapPower.toFixed(3)),
+      splAtOneMetre: Number(splAtOneMetre.toFixed(3)),
+      ambientNoise: Number(ambientNoise.toFixed(3)),
+      targetMargin: Number(targetMargin.toFixed(3)),
+      targetSpl: Number(targetSpl.toFixed(3)),
+      attenuationModel: indoorAttenuation ? "indoor" : "freefield",
+      mountingHeightM: Number(mountingHeightM.toFixed(3)),
+      listenerEarHeightM: Number(listenerEarHeightM.toFixed(3)),
+      verticalSeparationM: Number(verticalSeparationM.toFixed(3)),
+      dispersionAngle: Number(finiteNumber(source.beamWidth, coverage ? coverage.dispersionAngle : 360).toFixed(3)),
+      verticalDispersionAngle: Number(finiteNumber(source.verticalBeamWidth, coverage ? coverage.verticalDispersionAngle : 360).toFixed(3)),
+      slantRadiusM: Number(slantRadiusM.toFixed(3)),
+      planRadiusM: Number(planRadiusM.toFixed(3)),
+      designSpacingM: Number((planRadiusM * Math.SQRT2).toFixed(3)),
+      fixedLoss: Number(fixedLoss.toFixed(3)),
+      additionalLoss: Number(additionalLoss.toFixed(3)),
+      airLossPer100m: Number(Math.max(0, finiteNumber(project.airLossPer100m, 0)).toFixed(3)),
+      importedMaterial: Boolean(material),
+    };
+  }
+
   function sanitizeSource(input, projectWidth, projectDepth) {
     const value = input && typeof input === "object" ? input : {};
-    const presetKey = typeof value.presetKey === "string" && DEVICE_PRESETS[value.presetKey] ? value.presetKey : "custom";
-    const base = instantiateDevice(presetKey);
+    const requestedPresetKey = safeText(value.presetKey, "custom", 160) || "custom";
+    const basePresetKey = DEVICE_PRESETS[requestedPresetKey] ? requestedPresetKey : "custom";
+    const base = instantiateDevice(basePresetKey);
     const weighting = ["A", "C", "Z"].includes(value.weighting) ? value.weighting : base.weighting;
     return {
       id: safeText(value.id, makeId("source"), 160) || makeId("source"),
-      presetKey: base.presetKey,
+      presetKey: requestedPresetKey.startsWith("mto:") ? requestedPresetKey : base.presetKey,
+      mtoMaterialId: safeText(value.mtoMaterialId, "", 160),
       name: safeText(value.name, base.name, 200),
       model: safeText(value.model, base.model, 200),
       x: clamp(finiteNumber(value.x, base.x), 0, projectWidth),
@@ -1201,15 +1369,17 @@
     const materials = [];
     const takeoffs = [];
     const hiddenMaterialIds = new Set();
+    const materialProfileById = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
 
     (project.sources || []).forEach((source, index) => {
-      const acoustic = mtoSourceAcousticValues(project, source, target);
       const requirement = evaluateSourceOutputRequirement(source, project);
+      const importedMaterial = source.mtoMaterialId ? materialProfileById.get(source.mtoMaterialId) || null : null;
+      const designBasis = coverageDesignBasis(project, source, importedMaterial);
       const directional = finiteNumber(source.beamWidth, 360) < 180 || project.mode === "siren";
-      const symbol = directional ? "speaker" : "paga_speaker_a";
-      const color = project.mode === "siren" ? "#dc2626" : directional ? "#f97316" : "#eab308";
-      const layer = project.mode === "siren" ? "E-PA-EQUP-SIRN" : directional ? "E-PA-EQUP-HORN" : "E-PA-EQUP-SPKR";
-      const signature = JSON.stringify([
+      const symbol = importedMaterial ? importedMaterial.symbol : directional ? "speaker" : "paga_speaker_a";
+      const color = importedMaterial ? importedMaterial.color : project.mode === "siren" ? "#dc2626" : directional ? "#f97316" : "#eab308";
+      const layer = importedMaterial ? importedMaterial.layer : project.mode === "siren" ? "E-PA-EQUP-SIRN" : directional ? "E-PA-EQUP-HORN" : "E-PA-EQUP-SPKR";
+      const signature = importedMaterial ? `mto:${importedMaterial.id}` : JSON.stringify([
         source.model,
         source.presetKey,
         source.weighting,
@@ -1225,37 +1395,53 @@
       ]);
       let material = materialBySignature.get(signature);
       if (!material) {
-        const materialId = `paga-mat-${materials.length + 1}`;
+        const materialId = importedMaterial ? importedMaterial.id : `paga-mat-${materials.length + 1}`;
         const modelName = String(source.model || source.name || "PAGA loudspeaker").trim();
         material = {
+          ...(importedMaterial || {}),
           id: materialId,
-          name: `${modelName} (${Number(source.tapPower.toFixed(3))} W)`,
+          name: importedMaterial ? importedMaterial.name : `${modelName} (${Number(source.tapPower.toFixed(3))} W)`,
           type: "point",
-          category: "PAGA",
+          category: importedMaterial ? importedMaterial.category : "PAGA",
           color,
-          unit: "pcs",
+          unit: importedMaterial ? importedMaterial.unit : "pcs",
           layer,
-          waste: 0,
-          slack: 0,
-          isAerial: false,
-          w: 0,
-          T: 1,
+          waste: importedMaterial ? importedMaterial.waste : 0,
+          slack: importedMaterial ? importedMaterial.slack : 0,
+          isAerial: importedMaterial ? importedMaterial.isAerial : false,
+          w: importedMaterial ? importedMaterial.w : 0,
+          T: importedMaterial ? importedMaterial.T : 1,
           symbol,
           powerW: Number(source.tapPower.toFixed(3)),
           coverage: {
+            ...(importedMaterial ? importedMaterial.coverage : {}),
             type: "paga",
             enabled: true,
-            spl: acoustic.tapOutputAtOneMetre,
-            sensitivity: acoustic.sensitivity,
-            power: Number(source.tapPower.toFixed(3)),
-            ambientNoise: Number(project.ambientLevel.toFixed(3)),
-            targetMargin: Number(project.requiredMargin.toFixed(3)),
-            radiusM: acoustic.radiusM,
-            indoorAttenuation: false,
-            dispersionAngle: Number(source.beamWidth.toFixed(3)),
-            color: `${color}44`,
+            spl: designBasis.splAtOneMetre,
+            sensitivity: designBasis.sensitivity,
+            power: designBasis.tapPower,
+            ambientNoise: designBasis.ambientNoise,
+            targetMargin: designBasis.targetMargin,
+            targetSpl: designBasis.targetSpl,
+            radiusM: Math.max(0.01, designBasis.planRadiusM),
+            planRadiusM: designBasis.planRadiusM,
+            slantRadiusM: designBasis.slantRadiusM,
+            indoorAttenuation: designBasis.attenuationModel === "indoor",
+            attenuationModel: designBasis.attenuationModel,
+            mountingHeightM: designBasis.mountingHeightM,
+            listenerEarHeightM: designBasis.listenerEarHeightM,
+            verticalSeparationM: designBasis.verticalSeparationM,
+            dispersionAngle: designBasis.dispersionAngle,
+            verticalDispersionAngle: designBasis.verticalDispersionAngle,
+            designSpacingM: designBasis.designSpacingM,
+            weighting: source.weighting,
+            fixedLoss: designBasis.fixedLoss,
+            additionalLoss: designBasis.additionalLoss,
+            airLossPer100m: designBasis.airLossPer100m,
+            color: importedMaterial ? importedMaterial.coverage.color : `${color}44`,
           },
           pagaSourceOutputRequirement: requirement.key,
+          pagaImportedMaterial: Boolean(importedMaterial),
         };
         materialBySignature.set(signature, material);
         materials.push(material);
@@ -1293,6 +1479,9 @@
           drawingRef: project.backgroundName || project.title,
           location: `X ${Number(source.x.toFixed(3))} m, Y ${Number(source.y.toFixed(3))} m`,
           mounting: `Height ${Number(source.z.toFixed(3))} m; elevation aim ${Number(source.elevation.toFixed(3))} deg`,
+          z: String(designBasis.mountingHeightM),
+          listenerEarHeightM: String(designBasis.listenerEarHeightM),
+          verticalSeparationM: String(designBasis.verticalSeparationM),
           model: source.model || "",
           powerW: String(Number(source.tapPower.toFixed(3))),
           panelCircuit: source.loop || "",
@@ -1319,6 +1508,8 @@
             outputRequirementMinimum: requirement.minimumLevel,
             ratedOutputAtOneMetre: requirement.ratedOutput,
             coverageTarget: target,
+            designBasis,
+            mtoMaterialId: source.mtoMaterialId || "",
             enabled: source.enabled !== false,
           },
         },
@@ -1400,6 +1591,9 @@
       ? session.pagaSoundCoverageProject
       : session;
     const project = { ...nested };
+    if ((!Array.isArray(project.materialProfiles) || !project.materialProfiles.length) && Array.isArray(session.materials)) {
+      project.materialProfiles = importPagaMaterialProfiles(session);
+    }
     if (!project.backgroundImage) {
       const drawingSource = session.drawingSource || session.drawingSnapshot;
       const content = drawingSource && typeof drawingSource === "object" ? drawingSource.content : "";
@@ -1429,7 +1623,7 @@
     const migratedFlameproofMinimum = ["outdoorFlameproof", "custom"].includes(input.sourceOutputRequirement) ? legacyMinimum : fallback.minimumFlameproofOutput;
     return {
       ...fallback,
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: safeText(input.id, fallback.id, 160) || fallback.id,
       title: safeText(input.title, fallback.title, 300),
       revision: safeText(input.revision, fallback.revision, 80),
@@ -1472,6 +1666,7 @@
       backgroundDpi: clamp(finiteNumber(input.backgroundDpi, fallback.backgroundDpi), 10, 2400),
       backgroundPixelWidth: clamp(finiteNumber(input.backgroundPixelWidth, fallback.backgroundPixelWidth), 0, 100000),
       backgroundPixelHeight: clamp(finiteNumber(input.backgroundPixelHeight, fallback.backgroundPixelHeight), 0, 100000),
+      materialProfiles: importPagaMaterialProfiles(Array.isArray(input.materialProfiles) ? input.materialProfiles : []),
       sources: Array.isArray(input.sources)
         ? input.sources.filter((item) => item && typeof item === "object").slice(0, 2000).map((item) => sanitizeSource(item, width, depth))
         : fallback.sources,
@@ -1527,6 +1722,10 @@
     clampGroupTranslation,
     resizeRectangle,
     removeProjectObjects,
+    sanitizeMtoPagaMaterial,
+    importPagaMaterialProfiles,
+    devicePresetFromMtoMaterial,
+    coverageDesignBasis,
     buildMtoProjectSession,
     soundCoverageProjectFromSession,
     instantiateDevice,

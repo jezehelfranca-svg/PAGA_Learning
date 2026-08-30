@@ -302,7 +302,7 @@ test("project sanitization clamps nested objects, strips unknown keys, and migra
     noiseZones: [{ x: -10, y: 0, width: 999, depth: 999, level: 999, requiredMargin: 999, minimumLevel: -10, unknown: true }],
     obstacles: [{ x: 19.95, y: 9.95, width: 999, depth: 999, height: 1e9, loss: -10, unknown: true }],
   });
-  assert.equal(project.schemaVersion, 2);
+  assert.equal(project.schemaVersion, 3);
   assert.equal(project.fixedLoss, 0);
   assert.equal("unknownTopLevel" in project, false);
   assert.equal(project.sources[0].x, 0);
@@ -578,4 +578,156 @@ test("legacy Sound Coverage JSON remains importable through the compatibility he
   const project = simpleProject();
   project.title = "Legacy project";
   assert.equal(Model.soundCoverageProjectFromSession(project).title, "Legacy project");
+});
+
+test("Telecom MTO Material Configuration imports complete PAGA placement profiles", () => {
+  const profiles = Model.importPagaMaterialProfiles({
+    version: "1.1",
+    units: "m",
+    materials: [{
+      id: "mat-speaker-25w",
+      name: "Outdoor Horn 25 W",
+      type: "point",
+      category: "PAGA",
+      color: "#eab308",
+      unit: "pcs",
+      layer: "E-PA-EQUP-HORN",
+      symbol: "speaker",
+      coverage: {
+        type: "paga",
+        enabled: true,
+        sensitivity: 105,
+        power: 25,
+        spl: 119,
+        ambientNoise: 80,
+        targetMargin: 10,
+        radiusM: 28.12,
+        indoorAttenuation: false,
+        dispersionAngle: 120,
+        mountingHeightM: 0,
+        listenerEarHeightM: 0,
+      },
+    }],
+  });
+
+  assert.equal(profiles.length, 1);
+  const preset = Model.devicePresetFromMtoMaterial(profiles[0]);
+  assert.equal(preset.key, "mto:mat-speaker-25w");
+  assert.equal(preset.mtoMaterialId, "mat-speaker-25w");
+  assert.equal(preset.referenceSpl, 105);
+  assert.equal(preset.tapPower, 25);
+  assert.equal(preset.beamWidth, 120);
+});
+
+test("coverage design basis registers the complete supplied 25 W speaker profile", () => {
+  const project = simpleProject();
+  project.receiverHeight = 0;
+  project.materialProfiles = Model.importPagaMaterialProfiles({
+    materials: [{
+      id: "mat-speaker-25w",
+      name: "Outdoor Horn 25 W",
+      type: "point",
+      coverage: {
+        type: "paga",
+        sensitivity: 105,
+        power: 25,
+        spl: 119,
+        ambientNoise: 80,
+        targetMargin: 10,
+        radiusM: 28.12,
+        indoorAttenuation: false,
+        dispersionAngle: 120,
+        mountingHeightM: 0,
+        listenerEarHeightM: 0,
+      },
+    }],
+  });
+  const preset = Model.devicePresetFromMtoMaterial(project.materialProfiles[0]);
+  const item = Model.instantiateDevice(preset, { z: 0 });
+  const basis = Model.coverageDesignBasis(project, item);
+
+  assert.equal(basis.type, "paga");
+  assert.equal(basis.materialId, "mat-speaker-25w");
+  assert.equal(basis.sensitivity, 105);
+  assert.equal(basis.tapPower, 25);
+  assert.ok(Math.abs(basis.splAtOneMetre - 118.979) < 0.001);
+  assert.equal(basis.ambientNoise, 80);
+  assert.equal(basis.targetMargin, 10);
+  assert.equal(basis.targetSpl, 90);
+  assert.equal(basis.attenuationModel, "freefield");
+  assert.equal(basis.mountingHeightM, 0);
+  assert.equal(basis.listenerEarHeightM, 0);
+  assert.equal(basis.verticalSeparationM, 0);
+  assert.equal(basis.dispersionAngle, 120);
+  assert.ok(Math.abs(basis.planRadiusM - 28.117) < 0.001);
+  assert.ok(Math.abs(basis.designSpacingM - 39.763) < 0.001);
+});
+
+test("MTO session export reuses an imported material and includes complete design fields", () => {
+  const project = simpleProject();
+  project.receiverHeight = 0;
+  project.materialProfiles = Model.importPagaMaterialProfiles({
+    materials: [{
+      id: "existing-paga-material",
+      name: "Existing PAGA Horn",
+      type: "point",
+      category: "PAGA",
+      color: "#eab308",
+      unit: "pcs",
+      layer: "E-PA-EQUP-HORN",
+      symbol: "speaker",
+      coverage: {
+        type: "paga",
+        sensitivity: 105,
+        power: 25,
+        spl: 119,
+        ambientNoise: 80,
+        targetMargin: 10,
+        radiusM: 28.12,
+        indoorAttenuation: false,
+        dispersionAngle: 120,
+        mountingHeightM: 0,
+        listenerEarHeightM: 0,
+      },
+    }],
+  });
+  const preset = Model.devicePresetFromMtoMaterial(project.materialProfiles[0]);
+  project.sources = [Model.instantiateDevice(preset, { id: "source-existing", name: "SPK-101", z: 0 })];
+
+  const session = Model.buildMtoProjectSession(project);
+
+  assert.equal(session.materials.length, 1);
+  assert.equal(session.materials[0].id, "existing-paga-material");
+  assert.equal(session.materials[0].name, "Existing PAGA Horn");
+  assert.equal(session.materials[0].pagaImportedMaterial, true);
+  assert.equal(session.takeoffs[0].materialId, "existing-paga-material");
+  assert.equal(session.materials[0].coverage.targetSpl, 90);
+  assert.equal(session.materials[0].coverage.mountingHeightM, 0);
+  assert.equal(session.materials[0].coverage.listenerEarHeightM, 0);
+  assert.equal(session.materials[0].coverage.verticalSeparationM, 0);
+  assert.ok(Math.abs(session.materials[0].coverage.planRadiusM - 28.117) < 0.001);
+  assert.ok(Math.abs(session.materials[0].coverage.designSpacingM - 39.763) < 0.001);
+  assert.equal(session.takeoffs[0].metadata.pagaAcoustic.mtoMaterialId, "existing-paga-material");
+  assert.equal(session.takeoffs[0].metadata.pagaAcoustic.designBasis.dispersionAngle, 120);
+});
+
+test("project sanitization preserves imported material profiles and source material links", () => {
+  const project = simpleProject();
+  project.materialProfiles = Model.importPagaMaterialProfiles({
+    materials: [{
+      id: "linked-material",
+      name: "Linked PAGA material",
+      type: "point",
+      coverage: { type: "paga", sensitivity: 100, power: 10, ambientNoise: 70, targetMargin: 10 },
+    }],
+  });
+  const preset = Model.devicePresetFromMtoMaterial(project.materialProfiles[0]);
+  project.sources = [Model.instantiateDevice(preset)];
+
+  const sanitized = Model.sanitizeProject(project);
+
+  assert.equal(sanitized.schemaVersion, 3);
+  assert.equal(sanitized.materialProfiles[0].id, "linked-material");
+  assert.equal(sanitized.sources[0].mtoMaterialId, "linked-material");
+  assert.equal(sanitized.sources[0].presetKey, "mto:linked-material");
 });
