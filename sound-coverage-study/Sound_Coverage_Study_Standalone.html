@@ -38,6 +38,7 @@
   --radius: 11px;
   --radius-lg: 16px;
   --topbar-height: 72px;
+  --view-tabs-height: 44px;
   font-family: Inter, Aptos, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-synthesis: none;
 }
@@ -268,7 +269,7 @@ summary:focus-visible {
 .app-shell {
   display: grid;
   grid-template-columns: 304px minmax(560px, 1fr) 302px;
-  height: calc(100vh - var(--topbar-height));
+  height: calc(100vh - var(--topbar-height) - var(--view-tabs-height));
   min-height: 620px;
 }
 
@@ -1833,41 +1834,6 @@ kbd {
   line-height: 1.35;
 }
 
-.source-register {
-  display: grid;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.source-register a {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 12px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  color: inherit;
-  text-decoration: none;
-}
-
-.source-register a:last-child {
-  border-bottom: 0;
-}
-
-.source-register a:hover {
-  background: var(--surface-2);
-}
-
-.source-register b {
-  color: var(--teal-700);
-  font-size: 10px;
-}
-
-.source-register span {
-  color: var(--ink-soft);
-  font-size: 10px;
-}
-
 .caution-box {
   padding: 13px 14px;
   border-left: 4px solid var(--amber);
@@ -1912,6 +1878,233 @@ kbd {
   transform: translateY(0);
 }
 
+.view-tabs {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: var(--view-tabs-height);
+  padding: 6px 20px 0;
+  border-bottom: 1px solid var(--line);
+  background: #eef2ee;
+}
+
+.view-tab {
+  align-self: stretch;
+  min-width: 150px;
+  padding: 7px 18px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.view-tab:hover {
+  color: var(--teal-700);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.view-tab.active {
+  color: var(--teal-800);
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 -2px 8px rgba(7, 27, 28, 0.04);
+}
+
+.amplifier-view {
+  display: grid;
+  grid-template-columns: 330px minmax(720px, 1fr);
+  height: calc(100vh - var(--topbar-height) - var(--view-tabs-height));
+  min-height: 620px;
+  background: var(--surface-2);
+}
+
+.amplifier-controls {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.amplifier-controls h2,
+.amplifier-card h2 {
+  margin: 3px 0 12px;
+  font-size: 16px;
+}
+
+.amplifier-fields {
+  margin-top: 12px;
+}
+
+.amplifier-method-note p {
+  margin: 10px 0;
+}
+
+.amplifier-method-note code {
+  color: var(--teal-700);
+  font-size: 12px;
+}
+
+.amplifier-results {
+  padding: 24px;
+}
+
+.amplifier-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.amplifier-heading h1 {
+  margin: 3px 0 5px;
+  font-size: 25px;
+  letter-spacing: -0.035em;
+}
+
+.amplifier-heading p {
+  max-width: 850px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.amplifier-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.amplifier-metric {
+  display: grid;
+  gap: 3px;
+  min-height: 105px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.amplifier-metric span {
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.amplifier-metric strong {
+  color: var(--teal-800);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.amplifier-metric small {
+  align-self: end;
+  color: var(--ink-faint);
+}
+
+.amplifier-metric.emphasis {
+  border-color: rgba(33, 133, 94, 0.35);
+  background: var(--green-soft);
+}
+
+.amplifier-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.amplifier-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.amplifier-card .criteria-chip {
+  color: var(--teal-900);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.engineering-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.engineering-table th,
+.engineering-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.engineering-table th:first-child,
+.engineering-table td:first-child,
+.engineering-table th:nth-child(2),
+.engineering-table td:nth-child(2) {
+  text-align: left;
+}
+
+.engineering-table th {
+  color: var(--ink-faint);
+  background: var(--surface-2);
+  font-size: 9px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.engineering-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.status-pass {
+  color: var(--green);
+  font-weight: 750;
+}
+
+.status-out {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.amplifier-checks {
+  margin-top: 14px;
+}
+
+.amplifier-checks p {
+  margin: 7px 0;
+}
+
+.amplifier-warning,
+.amplifier-pass {
+  margin-top: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.amplifier-warning {
+  color: #81363a;
+  border: 1px solid #efc8cb;
+  background: var(--red-soft);
+}
+
+.amplifier-pass {
+  color: #175f45;
+  border: 1px solid #bde2ce;
+  background: var(--green-soft);
+}
+
 .print-report {
   display: none;
 }
@@ -1919,6 +2112,14 @@ kbd {
 @media (max-width: 1320px) {
   .app-shell {
     grid-template-columns: 282px minmax(520px, 1fr) 278px;
+  }
+
+  .amplifier-view {
+    grid-template-columns: 300px minmax(680px, 1fr);
+  }
+
+  .amplifier-results {
+    padding: 18px;
   }
 
   .topbar {
@@ -1960,14 +2161,243 @@ kbd {
   }
 
   .topbar,
+  .view-tabs,
   .app-shell,
+  .amplifier-view,
   .modal,
   .toast,
   .skip-link {
     display: none !important;
   }
 
-  .print-report {
+  .view-tabs {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: var(--view-tabs-height);
+  padding: 6px 20px 0;
+  border-bottom: 1px solid var(--line);
+  background: #eef2ee;
+}
+
+.view-tab {
+  align-self: stretch;
+  min-width: 150px;
+  padding: 7px 18px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.view-tab:hover {
+  color: var(--teal-700);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.view-tab.active {
+  color: var(--teal-800);
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 -2px 8px rgba(7, 27, 28, 0.04);
+}
+
+.amplifier-view {
+  display: grid;
+  grid-template-columns: 330px minmax(720px, 1fr);
+  height: calc(100vh - var(--topbar-height) - var(--view-tabs-height));
+  min-height: 620px;
+  background: var(--surface-2);
+}
+
+.amplifier-controls {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.amplifier-controls h2,
+.amplifier-card h2 {
+  margin: 3px 0 12px;
+  font-size: 16px;
+}
+
+.amplifier-fields {
+  margin-top: 12px;
+}
+
+.amplifier-method-note p {
+  margin: 10px 0;
+}
+
+.amplifier-method-note code {
+  color: var(--teal-700);
+  font-size: 12px;
+}
+
+.amplifier-results {
+  padding: 24px;
+}
+
+.amplifier-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.amplifier-heading h1 {
+  margin: 3px 0 5px;
+  font-size: 25px;
+  letter-spacing: -0.035em;
+}
+
+.amplifier-heading p {
+  max-width: 850px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.amplifier-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.amplifier-metric {
+  display: grid;
+  gap: 3px;
+  min-height: 105px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.amplifier-metric span {
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.amplifier-metric strong {
+  color: var(--teal-800);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.amplifier-metric small {
+  align-self: end;
+  color: var(--ink-faint);
+}
+
+.amplifier-metric.emphasis {
+  border-color: rgba(33, 133, 94, 0.35);
+  background: var(--green-soft);
+}
+
+.amplifier-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.amplifier-card {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.amplifier-card .criteria-chip {
+  color: var(--teal-900);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.engineering-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.engineering-table th,
+.engineering-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.engineering-table th:first-child,
+.engineering-table td:first-child,
+.engineering-table th:nth-child(2),
+.engineering-table td:nth-child(2) {
+  text-align: left;
+}
+
+.engineering-table th {
+  color: var(--ink-faint);
+  background: var(--surface-2);
+  font-size: 9px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.engineering-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.status-pass {
+  color: var(--green);
+  font-weight: 750;
+}
+
+.status-out {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.amplifier-checks {
+  margin-top: 14px;
+}
+
+.amplifier-checks p {
+  margin: 7px 0;
+}
+
+.amplifier-warning,
+.amplifier-pass {
+  margin-top: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.amplifier-warning {
+  color: #81363a;
+  border: 1px solid #efc8cb;
+  background: var(--red-soft);
+}
+
+.amplifier-pass {
+  color: #175f45;
+  border: 1px solid #bde2ce;
+  background: var(--green-soft);
+}
+
+.print-report {
     display: block;
   }
 
@@ -2092,12 +2522,6 @@ kbd {
     font-size: 7.4pt;
   }
 
-  .print-sources {
-    margin: 2mm 0 0;
-    padding-left: 5mm;
-    color: #556565;
-    font-size: 7pt;
-  }
 
   .page-break-before {
     break-before: page;
@@ -2139,7 +2563,12 @@ kbd {
     </nav>
   </header>
 
-  <main class="app-shell">
+  <nav class="view-tabs" role="tablist" aria-label="Engineering workspace">
+    <button class="view-tab active" id="coverageViewTab" type="button" role="tab" aria-selected="true" aria-controls="coverageView">Coverage study</button>
+    <button class="view-tab" id="amplifierViewTab" type="button" role="tab" aria-selected="false" aria-controls="amplifierView">Amplifier sizing</button>
+  </nav>
+
+  <main class="app-shell" id="coverageView" role="tabpanel" aria-labelledby="coverageViewTab">
     <aside class="control-panel panel-scroll" aria-label="Study controls">
       <section class="panel-section project-heading">
         <div class="section-kicker">Project setup</div>
@@ -2346,10 +2775,7 @@ kbd {
               <span>Air loss <b>dB/100m</b></span>
               <input data-project-field="airLossPer100m" type="number" min="0" max="100" step="0.1">
             </label>
-            <label class="field">
-              <span>Amp headroom <b>%</b></span>
-              <input data-project-field="amplifierHeadroom" type="number" min="0" max="500" step="5">
-            </label>
+
             <label class="field">
               <span>Heatmap opacity</span>
               <input data-project-field="heatmapOpacity" type="range" min="0.1" max="1" step="0.05">
@@ -2472,6 +2898,79 @@ kbd {
     </aside>
   </main>
 
+  <main class="amplifier-view" id="amplifierView" role="tabpanel" aria-labelledby="amplifierViewTab" hidden>
+    <aside class="amplifier-controls panel-scroll" aria-label="Amplifier sizing assumptions">
+      <section class="panel-section">
+        <div class="section-kicker">Electrical design</div>
+        <h2>Amplifier assumptions</h2>
+        <p class="microcopy">Sizing uses the tap load of every enabled speaker and its assigned A/B circuit. The coverage failure switches do not reduce the installed amplifier design quantity.</p>
+      </section>
+      <section class="panel-section">
+        <label class="field full">
+          <span>Allocation architecture</span>
+          <select data-project-field="amplifierAllocationMode">
+            <option value="perCircuit">Dedicated capacity per circuit</option>
+            <option value="pooledByGroup">Pooled amplifier bank per A/B group</option>
+          </select>
+        </label>
+        <div class="field-grid two amplifier-fields">
+          <label class="field">
+            <span>Amplifier rating <b>W</b></span>
+            <input data-project-field="amplifierUnitRating" type="number" min="1" max="1000000" step="1" list="amplifierRatingPresets">
+            <datalist id="amplifierRatingPresets"><option value="120"></option><option value="250"></option><option value="500"></option><option value="1000"></option><option value="2000"></option></datalist>
+          </label>
+          <label class="field">
+            <span>Maximum loading <b>%</b></span>
+            <input data-project-field="amplifierMaxLoadPercent" type="number" min="1" max="100" step="1">
+          </label>
+          <label class="field">
+            <span>Standby units <b>per active group</b></span>
+            <input data-project-field="amplifierStandbyPerGroup" type="number" min="0" max="1000" step="1">
+          </label>
+          <label class="field">
+            <span>Loose spare amplifiers <b>%</b></span>
+            <input data-project-field="amplifierLooseSparePercent" type="number" min="0" max="500" step="1">
+          </label>
+        </div>
+      </section>
+      <section class="panel-section amplifier-method-note">
+        <div class="section-kicker">Calculation basis</div>
+        <p><b>Usable capacity per amplifier</b><br><code>Rated power × maximum loading %</code></p>
+        <p><b>Online quantity</b><br><code>ceil(design load ÷ usable capacity)</code></p>
+        <p class="microcopy">Dedicated mode rounds each circuit separately and is conservative. Pooled mode rounds the total load of Group A and Group B separately. When bidding mode is on, its speaker quantity allowance and bid amplifier headroom are applied before this tab's maximum-loading limit. Standby units and loose purchasing spares are added after the online quantity.</p>
+      </section>
+    </aside>
+
+    <section class="amplifier-results panel-scroll" aria-label="Amplifier sizing results">
+      <div class="amplifier-heading">
+        <div><div class="section-kicker">PAGA amplifier schedule</div><h1>Amplifier capacity and quantities</h1><p id="amplifierBasisNote"></p></div>
+        <button class="button primary" id="printAmplifierButton" type="button">Print study</button>
+      </div>
+      <div class="amplifier-metrics">
+        <article class="amplifier-metric"><span>Amplifier sizing load</span><strong id="amplifierDesignLoad">0 W</strong><small id="amplifierBaseLoad">0 W modelled</small></article>
+        <article class="amplifier-metric"><span>Online amplifiers</span><strong id="amplifierOnlineQuantity">0</strong><small id="amplifierOnlineCapacity">0 W nameplate</small></article>
+        <article class="amplifier-metric"><span>Installed incl. standby</span><strong id="amplifierInstalledQuantity">0</strong><small id="amplifierStandbyQuantity">0 standby</small></article>
+        <article class="amplifier-metric emphasis"><span>Total purchase quantity</span><strong id="amplifierPurchaseQuantity">0</strong><small id="amplifierLooseSpareQuantity">0 loose spare</small></article>
+      </div>
+      <div class="amplifier-grid">
+        <section class="amplifier-card">
+          <div class="section-heading-row"><div><div class="section-kicker">Redundancy banks</div><h2>Group A / B summary</h2></div><span class="criteria-chip" id="amplifierLoadingChip">0% loaded</span></div>
+          <div class="table-scroll"><table class="engineering-table"><thead><tr><th>Group</th><th>Circuits</th><th>Speakers</th><th>Modelled load</th><th>Design load</th><th>Online</th><th>Standby</th><th>Installed</th></tr></thead><tbody id="amplifierGroupBody"></tbody></table></div>
+        </section>
+        <section class="amplifier-card">
+          <div class="section-kicker">Allocation schedule</div>
+          <h2 id="amplifierAllocationTitle">Dedicated circuit sizing</h2>
+          <div class="table-scroll"><table class="engineering-table"><thead><tr><th>Group</th><th>Circuit / bank</th><th>Circuits</th><th>Speakers</th><th>Design load</th><th>Online amps</th><th>Scenario</th><th>Note</th></tr></thead><tbody id="amplifierAllocationBody"></tbody></table></div>
+        </section>
+      </div>
+      <section class="amplifier-card amplifier-checks">
+        <div class="section-kicker">Design checks</div>
+        <h2>Capacity statement</h2>
+        <div id="amplifierWarnings"></div>
+      </section>
+    </section>
+  </main>
+
   <dialog class="modal guide-modal" id="guideDialog" aria-labelledby="guideTitle">
     <div class="modal-header">
       <div>
@@ -2482,7 +2981,7 @@ kbd {
     </div>
     <div class="modal-body guide-layout">
       <section class="method-callout">
-        <div class="method-icon" aria-hidden="true">1-9</div>
+        <div class="method-icon" aria-hidden="true">1-10</div>
         <div>
           <strong>Recommended workflow</strong>
           <p>Set the project basis first, calibrate the plan, define each receiver requirement, then configure and place sources. Check both area compliance and loudspeaker equipment qualification before printing the study.</p>
@@ -2497,6 +2996,7 @@ kbd {
         <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles keep their MTO material IDs, network identity, technical specifications, and available placement-height defaults. This command imports material profiles only; existing MTO takeoff placements are not added to the study. Then set mounting height, aim, class, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
+        <li><strong>Size the amplifier system.</strong><span>Open <b>Amplifier sizing</b>. Choose dedicated circuit capacity or pooled A/B banks, then enter the selected amplifier rating, maximum loading, standby units per group, and loose amplifier spares. Review every circuit/bank before using the purchase quantity.</span></li>
         <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. <b>Export</b> creates one JSON that can be reopened here or loaded in Telecom MTO Lite under <b>Setup &gt; Project &gt; Load</b>. Export the grid CSV separately, then print the study.</span></li>
       </ol>
       <section class="guide-reference" id="referenceConditionGuide">
@@ -2558,19 +3058,6 @@ kbd {
           <article><span>Public address</span><strong>78.32 dBA</strong><small>Reported average; 48 dBA average ambient</small></article>
           <article><span>Emergency siren</span><strong>99.32 dBC</strong><small>Reported average; 80 dBC average ambient</small></article>
           <article><span>ESS source reference</span><strong>118 dBC @ 30 m</strong><small>1000 Hz study value for MOD8032B</small></article>
-        </div>
-      </section>
-
-      <section>
-        <h3>Source register</h3>
-        <div class="source-register">
-          <a href="../CE-040449-001_SOUND%20COVERAGE%20STUDY%20FOR%20IN-PLANT%20PAGING%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040449-001</b><span>In-Plant Paging IFC study · formulas §2.4–2.5, criteria §3.1, assumptions §3.2</span></a>
-          <a href="../CE-040450-001_SOUND%20COVERAGE%20STUDY%20FOR%20EMERGENCY%20SIREN%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040450-001</b><span>Emergency Siren IFC study · criteria, 15 m mounting, MOD8032B reference</span></a>
-          <a href="../CE-040451-001_SOUND%20COVERAGE%20STUDY%20FOR%20PUBLIC%20ADDRESS%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040451-001</b><span>Public Address IFC study · criteria, assumptions, study benchmark</span></a>
-          <a href="../Maintenance%20Building_PAGA.pdf"><b>Maintenance Building_PAGA.pdf</b><span>Equipment schedule: 25 W and 15 W horns, 6 W ceiling speakers; minimum 2.5 m mounting note</span></a>
-          <a href="../Substation%20PAGA.pdf"><b>Substation PAGA.pdf</b><span>Equipment schedule and installation notes for IPPS layouts</span></a>
-          <a href="../Block%20Diagram%20PAGA.pdf"><b>Block Diagram PAGA.pdf</b><span>PAGA/IPPS topology and speaker-loop context</span></a>
-          <a href="../Acoustic%20Study.pdf"><b>Acoustic Study.pdf</b><span>Preserved repository source; the stored bytes do not expose a valid PDF header and could not be parsed</span></a>
         </div>
       </section>
 
@@ -2714,7 +3201,7 @@ kbd {
       enforceMaximum: false,
       fixedLoss: 0,
       note: "At least 15 dB above ambient. The source study states a 105 dBA personnel limit while mapping in dBC, so the maximum is not enforced until weightings are reconciled.",
-      sourceRef: "CE-040450-001, sections 3.1-3.2 (document pages 7-8)",
+      sourceRef: "Verify criteria against the applicable project requirements before issue.",
     },
   });
 
@@ -3437,6 +3924,125 @@ kbd {
       .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
   }
 
+  function calculateAmplifierPlan(project) {
+    const input = project && typeof project === "object" ? project : createProject("paging");
+    const rating = clamp(finiteNumber(input.amplifierUnitRating, 500), 1, 1000000);
+    const maximumLoadingPercent = clamp(finiteNumber(input.amplifierMaxLoadPercent, 80), 1, 100);
+    const usableCapacityPerUnit = rating * maximumLoadingPercent / 100;
+    const standbyPerGroup = clamp(Math.round(finiteNumber(input.amplifierStandbyPerGroup, 1)), 0, 1000);
+    const looseSparePercent = clamp(finiteNumber(input.amplifierLooseSparePercent, 0), 0, 500);
+    const allocationMode = input.amplifierAllocationMode === "pooledByGroup" ? "pooledByGroup" : "perCircuit";
+    const circuits = summarizeCircuits(input);
+    const designSources = Array.isArray(input.sources) ? input.sources.filter((source) => source.enabled !== false) : [];
+    const modelledConnectedLoad = designSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
+    const bidding = calculateBiddingEstimate(input, { sourceCount: designSources.length, connectedLoad: modelledConnectedLoad });
+    const quantityLoadScale = bidding.enabled && bidding.modelledQuantity ? bidding.installedQuantity / bidding.modelledQuantity : 1;
+    const biddingHeadroomFactor = bidding.enabled ? 1 + bidding.amplifierHeadroomPercent / 100 : 1;
+    const loadScale = quantityLoadScale * biddingHeadroomFactor;
+    const circuitBasis = circuits.map((circuit) => ({
+      ...circuit,
+      baseLoad: circuit.connectedLoad,
+      designLoad: circuit.connectedLoad * loadScale,
+    }));
+    let rows;
+    if (allocationMode === "pooledByGroup") {
+      rows = ["A", "B"].map((group) => {
+        const entries = circuitBasis.filter((circuit) => circuit.group === group);
+        const baseLoad = entries.reduce((sum, circuit) => sum + circuit.baseLoad, 0);
+        const designLoad = entries.reduce((sum, circuit) => sum + circuit.designLoad, 0);
+        return {
+          key: `group-${group}`,
+          group,
+          name: `Group ${group} pooled bank`,
+          circuitCount: entries.length,
+          speakerCount: entries.reduce((sum, circuit) => sum + circuit.count, 0),
+          baseLoad,
+          designLoad,
+          onlineQuantity: designLoad > 0 ? Math.ceil(designLoad / usableCapacityPerUnit) : 0,
+          scenarioActive: group === "A" ? input.scenarioGroupAEnabled !== false : input.scenarioGroupBEnabled !== false,
+          requiresCircuitSplit: false,
+        };
+      }).filter((row) => row.circuitCount || row.designLoad);
+    } else {
+      rows = circuitBasis.map((circuit) => {
+        const onlineQuantity = circuit.designLoad > 0 ? Math.ceil(circuit.designLoad / usableCapacityPerUnit) : 0;
+        return {
+          key: circuit.key,
+          group: circuit.group,
+          name: circuit.name,
+          circuitCount: 1,
+          speakerCount: circuit.count,
+          baseLoad: circuit.baseLoad,
+          designLoad: circuit.designLoad,
+          onlineQuantity,
+          scenarioActive: circuit.scenarioActive,
+          requiresCircuitSplit: onlineQuantity > 1,
+        };
+      });
+    }
+    const groups = ["A", "B"].map((group) => {
+      const groupRows = rows.filter((row) => row.group === group);
+      const designLoad = groupRows.reduce((sum, row) => sum + row.designLoad, 0);
+      const baseLoad = groupRows.reduce((sum, row) => sum + row.baseLoad, 0);
+      const onlineQuantity = groupRows.reduce((sum, row) => sum + row.onlineQuantity, 0);
+      const standbyQuantity = onlineQuantity > 0 ? standbyPerGroup : 0;
+      return {
+        group,
+        circuitCount: circuits.filter((circuit) => circuit.group === group).length,
+        speakerCount: circuits.filter((circuit) => circuit.group === group).reduce((sum, circuit) => sum + circuit.count, 0),
+        baseLoad,
+        designLoad,
+        onlineQuantity,
+        standbyQuantity,
+        installedQuantity: onlineQuantity + standbyQuantity,
+      };
+    });
+    const designLoad = rows.reduce((sum, row) => sum + row.designLoad, 0);
+    const scenarioLoad = circuits.filter((circuit) => circuit.scenarioActive).reduce((sum, circuit) => sum + circuit.connectedLoad, 0);
+    const onlineQuantity = groups.reduce((sum, group) => sum + group.onlineQuantity, 0);
+    const standbyQuantity = groups.reduce((sum, group) => sum + group.standbyQuantity, 0);
+    const installedQuantity = onlineQuantity + standbyQuantity;
+    const looseSpareQuantity = installedQuantity > 0 ? Math.ceil(installedQuantity * looseSparePercent / 100) : 0;
+    const purchaseQuantity = installedQuantity + looseSpareQuantity;
+    const onlineNameplateCapacity = onlineQuantity * rating;
+    const usableOnlineCapacity = onlineQuantity * usableCapacityPerUnit;
+    const warnings = [];
+    if (!circuits.length) warnings.push("No active design speakers are assigned.");
+    if (circuits.some((circuit) => circuit.name === "Unassigned")) warnings.push("One or more speakers have no circuit name.");
+    if (rows.some((row) => row.requiresCircuitSplit)) warnings.push("At least one circuit exceeds one amplifier's usable capacity and must be split into approved amplifier channels or redesigned.");
+    return {
+      allocationMode,
+      rating,
+      maximumLoadingPercent,
+      usableCapacityPerUnit,
+      standbyPerGroup,
+      looseSparePercent,
+      biddingApplied: bidding.enabled,
+      quantityLoadScale,
+      biddingHeadroomFactor,
+      loadScale,
+      modelledSpeakerCount: designSources.length,
+      installedSpeakerCount: bidding.installedQuantity,
+      modelledConnectedLoad,
+      designLoad,
+      scenarioLoad,
+      onlineQuantity,
+      standbyQuantity,
+      installedQuantity,
+      looseSpareQuantity,
+      purchaseQuantity,
+      onlineNameplateCapacity,
+      installedNameplateCapacity: installedQuantity * rating,
+      purchaseNameplateCapacity: purchaseQuantity * rating,
+      usableOnlineCapacity,
+      loadingPercent: onlineNameplateCapacity > 0 ? designLoad / onlineNameplateCapacity * 100 : 0,
+      capacityMargin: Math.max(0, usableOnlineCapacity - designLoad),
+      rows,
+      groups,
+      warnings,
+    };
+  }
+
   function instantiateDevice(key, overrides = {}) {
     const preset = key && typeof key === "object" ? key : DEVICE_PRESETS[key] || DEVICE_PRESETS.custom;
     return {
@@ -3529,6 +4135,11 @@ kbd {
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
+      amplifierUnitRating: 500,
+      amplifierMaxLoadPercent: 80,
+      amplifierAllocationMode: "perCircuit",
+      amplifierStandbyPerGroup: 1,
+      amplifierLooseSparePercent: 0,
       biddingModeEnabled: false,
       biddingAcousticReserve: 3,
       biddingQuantityAllowance: 25,
@@ -4554,6 +5165,11 @@ kbd {
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
+      amplifierUnitRating: clamp(finiteNumber(input.amplifierUnitRating, fallback.amplifierUnitRating), 1, 1000000),
+      amplifierMaxLoadPercent: clamp(finiteNumber(input.amplifierMaxLoadPercent, fallback.amplifierMaxLoadPercent), 1, 100),
+      amplifierAllocationMode: input.amplifierAllocationMode === "pooledByGroup" ? "pooledByGroup" : "perCircuit",
+      amplifierStandbyPerGroup: clamp(Math.round(finiteNumber(input.amplifierStandbyPerGroup, fallback.amplifierStandbyPerGroup)), 0, 1000),
+      amplifierLooseSparePercent: clamp(finiteNumber(input.amplifierLooseSparePercent, fallback.amplifierLooseSparePercent), 0, 500),
       biddingModeEnabled: input.biddingModeEnabled == null ? fallback.biddingModeEnabled : Boolean(input.biddingModeEnabled),
       biddingAcousticReserve: clamp(finiteNumber(input.biddingAcousticReserve, fallback.biddingAcousticReserve), 0, 20),
       biddingQuantityAllowance: clamp(finiteNumber(input.biddingQuantityAllowance, fallback.biddingQuantityAllowance), 0, 500),
@@ -4619,6 +5235,7 @@ kbd {
     sourceActiveInScenario,
     assignSourcesToCircuits,
     summarizeCircuits,
+    calculateAmplifierPlan,
     beamPlaneLoss,
     directivityLoss,
     segmentRectangleInterval,
@@ -4862,8 +5479,6 @@ kbd {
       else control.value = project[key] ?? "";
     });
 
-    document.getElementById("autoAssignCircuitsButton").addEventListener("click", autoAssignExistingCircuits);
-
     document.querySelectorAll(".mode-option").forEach((button) => {
       const active = button.dataset.mode === project.mode;
       button.classList.toggle("active", active);
@@ -5070,6 +5685,7 @@ kbd {
     updateSourceOutputRequirementDisplay();
     updateBiddingAllowanceDisplay();
     updateCircuitScenarioDisplay();
+    updateAmplifierDisplay();
   }
 
   function updateCircuitScenarioDisplay() {
@@ -5093,6 +5709,46 @@ kbd {
     });
     const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
     target.innerHTML = `<span><b>Auto assignment:</b> up to ${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</span><hr>${groups.join("<hr>")}${outage ? `<hr><span class="scenario-off"><b>Outage:</b> Group ${escapeHtml(outage.group)} · ${escapeHtml(outage.name)}</span>` : ""}`;
+  }
+
+  function setWorkspaceView(view) {
+    const showAmplifier = view === "amplifier";
+    document.getElementById("coverageView").hidden = showAmplifier;
+    document.getElementById("amplifierView").hidden = !showAmplifier;
+    const coverageTab = document.getElementById("coverageViewTab");
+    const amplifierTab = document.getElementById("amplifierViewTab");
+    coverageTab.classList.toggle("active", !showAmplifier);
+    amplifierTab.classList.toggle("active", showAmplifier);
+    coverageTab.setAttribute("aria-selected", String(!showAmplifier));
+    amplifierTab.setAttribute("aria-selected", String(showAmplifier));
+    if (showAmplifier) updateAmplifierDisplay();
+    else scheduleCanvasRender();
+  }
+
+  function updateAmplifierDisplay() {
+    const plan = Model.calculateAmplifierPlan(project);
+    const allocationLabel = plan.allocationMode === "perCircuit" ? "Dedicated capacity per circuit" : "Pooled bank per A/B group";
+    document.getElementById("amplifierDesignLoad").textContent = `${round(plan.designLoad, 1)} W`;
+    document.getElementById("amplifierBaseLoad").textContent = plan.biddingApplied
+      ? `${round(plan.modelledConnectedLoad, 1)} W modelled · ${plan.installedSpeakerCount} bid speakers`
+      : `${round(plan.modelledConnectedLoad, 1)} W modelled`;
+    document.getElementById("amplifierOnlineQuantity").textContent = String(plan.onlineQuantity);
+    document.getElementById("amplifierOnlineCapacity").textContent = `${round(plan.onlineNameplateCapacity, 0)} W nameplate`;
+    document.getElementById("amplifierInstalledQuantity").textContent = String(plan.installedQuantity);
+    document.getElementById("amplifierStandbyQuantity").textContent = `${plan.standbyQuantity} standby`;
+    document.getElementById("amplifierPurchaseQuantity").textContent = String(plan.purchaseQuantity);
+    document.getElementById("amplifierLooseSpareQuantity").textContent = `${plan.looseSpareQuantity} loose spare`;
+    document.getElementById("amplifierLoadingChip").textContent = `${round(plan.loadingPercent, 1)}% nameplate load`;
+    document.getElementById("amplifierBasisNote").textContent = `${allocationLabel}. Each ${round(plan.rating, 0)} W unit is limited to ${round(plan.maximumLoadingPercent, 0)}%, giving ${round(plan.usableCapacityPerUnit, 1)} W usable capacity.${plan.biddingApplied ? ` Proposal quantity allowance scales load by ${round(plan.quantityLoadScale, 3)}, then bid amplifier headroom adds ×${round(plan.biddingHeadroomFactor, 3)}; combined sizing factor ×${round(plan.loadScale, 3)}.` : ""}`;
+    document.getElementById("amplifierAllocationTitle").textContent = plan.allocationMode === "perCircuit" ? "Dedicated circuit sizing" : "Pooled A/B bank sizing";
+    document.getElementById("amplifierGroupBody").innerHTML = plan.groups.map((group) => `<tr><td><b>Group ${group.group}</b></td><td>${group.circuitCount}</td><td>${group.speakerCount}</td><td>${round(group.baseLoad, 1)} W</td><td>${round(group.designLoad, 1)} W</td><td>${group.onlineQuantity}</td><td>${group.standbyQuantity}</td><td><b>${group.installedQuantity}</b></td></tr>`).join("") || `<tr><td colspan="8">No speaker circuits are assigned.</td></tr>`;
+    document.getElementById("amplifierAllocationBody").innerHTML = plan.rows.map((row) => {
+      const note = row.requiresCircuitSplit ? "Split circuit / channels required" : plan.allocationMode === "pooledByGroup" ? "Shared group bank" : "Dedicated circuit capacity";
+      return `<tr><td>${escapeHtml(row.group)}</td><td><b>${escapeHtml(row.name)}</b></td><td>${row.circuitCount}</td><td>${row.speakerCount}</td><td>${round(row.designLoad, 1)} W</td><td>${row.onlineQuantity}</td><td><span class="${row.scenarioActive ? "status-pass" : "status-out"}">${row.scenarioActive ? "Operating" : "Out"}</span></td><td>${escapeHtml(note)}</td></tr>`;
+    }).join("") || `<tr><td colspan="8">No amplifier allocation is available.</td></tr>`;
+    const capacityStatement = `<p><b>${round(plan.designLoad, 1)} W design load</b> is allocated to ${plan.onlineQuantity} online × ${round(plan.rating, 0)} W amplifiers. Usable online capacity is ${round(plan.usableOnlineCapacity, 1)} W at the ${round(plan.maximumLoadingPercent, 0)}% loading limit, leaving ${round(plan.capacityMargin, 1)} W margin.</p><p>Current A/B outage scenario leaves ${round(plan.scenarioLoad, 1)} W of modelled speaker load operating. Installed quantity is ${plan.onlineQuantity} online + ${plan.standbyQuantity} standby; purchasing adds ${plan.looseSpareQuantity} loose spare.</p>`;
+    const warningHtml = plan.warnings.map((warning) => `<div class="amplifier-warning">${escapeHtml(warning)}</div>`).join("");
+    document.getElementById("amplifierWarnings").innerHTML = `${capacityStatement}${warningHtml || `<div class="amplifier-pass">Capacity arithmetic passes the configured assumptions. Confirm the selected amplifier model, monitored circuit topology, cable losses, emergency duty, power supply, and authority requirements before issue.</div>`}`;
   }
 
   function updateBiddingAllowanceDisplay() {
@@ -6880,6 +7536,7 @@ kbd {
     const criteria = Model.MODE_CRITERIA[project.mode] || Model.MODE_CRITERIA.paging;
     const circuits = Model.summarizeCircuits(project);
     const bidding = summary.bidding;
+    const amplifierPlan = Model.calculateAmplifierPlan(project);
     const image = canvas.toDataURL("image/png");
     const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
     const scenarioText = `Group A ${project.scenarioGroupAEnabled === false ? "OFF" : "ON"}; Group B ${project.scenarioGroupBEnabled === false ? "OFF" : "ON"}; ${outage ? `${outage.group} / ${outage.name} OUT` : "no circuit outage"}`;
@@ -6893,7 +7550,8 @@ kbd {
       const active = Model.sourceActiveInScenario(project, source);
       return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(Model.normalizeRedundancyGroup(source.redundancyGroup))}</td><td>${escapeHtml(source.loop || "Unassigned")}</td><td>${source.enabled === false ? "Excluded" : active ? "Operating" : "Out in scenario"}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
     }).join("");
-    const circuitRows = circuits.map((circuit) => `<tr><td>${escapeHtml(circuit.group)}</td><td>${escapeHtml(circuit.name)}</td><td>${circuit.count}</td><td>${round(circuit.connectedLoad, 1)} W</td><td>${round(circuit.withHeadroom, 1)} W</td><td>${circuit.scenarioActive ? "Operating" : "Out"}</td></tr>`).join("");
+    const circuitRows = circuits.map((circuit) => `<tr><td>${escapeHtml(circuit.group)}</td><td>${escapeHtml(circuit.name)}</td><td>${circuit.count}</td><td>${round(circuit.connectedLoad, 1)} W</td><td>${circuit.scenarioActive ? "Operating" : "Out"}</td></tr>`).join("");
+    const amplifierPrintRows = amplifierPlan.groups.map((group) => `<tr><td>Group ${escapeHtml(group.group)}</td><td>${group.circuitCount}</td><td>${group.speakerCount}</td><td>${round(group.designLoad, 1)} W</td><td>${group.onlineQuantity}</td><td>${group.standbyQuantity}</td><td>${group.installedQuantity}</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     const projectOutputRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
     const projectOutputRequirementText = `Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m (rated power). Default source class: ${projectOutputRequirement.key === "none" ? "none" : projectOutputRequirement.projectLabel}.`;
@@ -6913,9 +7571,9 @@ kbd {
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
         <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Redundancy scenario</td><td>${escapeHtml(scenarioText)}</td></tr><tr><td>Auto-assignment circuit capacity</td><td>${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Proposal allowances</td><td>${bidding.enabled ? `Enabled: +${round(bidding.acousticReserveDb, 1)} dB acoustic reserve; ${round(bidding.quantityAllowancePercent, 0)}% installed quantity; ${round(bidding.amplifierHeadroomPercent, 0)}% amplifier headroom; ${round(bidding.looseSparePercent, 0)}% loose spares` : "Disabled"}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
-        <section><h2>A/B speaker circuit summary</h2><table><thead><tr><th>Group</th><th>Circuit</th><th>Speakers</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th><th>Scenario</th></tr></thead><tbody>${circuitRows || `<tr><td colspan="6">No active design sources</td></tr>`}</tbody></table>${bidding.enabled ? `<h3>Proposal bid allowance</h3><table><tbody><tr><td>Modelled design sources</td><td>${bidding.modelledQuantity}</td></tr><tr><td>Installed bid quantity</td><td>${bidding.installedQuantity} (${bidding.quantityAllowance} allowance)</td></tr><tr><td>Loose spares / total purchase</td><td>${bidding.looseSpareQuantity} / ${bidding.purchaseQuantity}</td></tr><tr><td>Estimated installed load</td><td>${round(bidding.estimatedConnectedLoad, 1)} W</td></tr><tr><td>Minimum amplifier capacity</td><td>${round(bidding.amplifierCapacity, 0)} W</td></tr></tbody></table>` : ""}${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
+        <section><h2>A/B speaker circuit summary</h2><table><thead><tr><th>Group</th><th>Circuit</th><th>Speakers</th><th>Connected load</th><th>Scenario</th></tr></thead><tbody>${circuitRows || `<tr><td colspan="5">No active design sources</td></tr>`}</tbody></table><h3>Amplifier sizing</h3><table><thead><tr><th>Bank</th><th>Circuits</th><th>Speakers</th><th>Design load</th><th>Online</th><th>Standby</th><th>Installed</th></tr></thead><tbody>${amplifierPrintRows || `<tr><td colspan="7">No amplifier allocation</td></tr>`}</tbody></table><p class="print-note">${amplifierPlan.allocationMode === "perCircuit" ? "Dedicated capacity per circuit" : "Pooled bank per A/B group"}; ${round(amplifierPlan.rating, 0)} W units at ${round(amplifierPlan.maximumLoadingPercent, 0)}% maximum loading (${round(amplifierPlan.usableCapacityPerUnit, 1)} W usable each)${amplifierPlan.biddingApplied ? `; proposal sizing factor ×${round(amplifierPlan.loadScale, 3)} included` : ""}. Quantity: ${amplifierPlan.onlineQuantity} online + ${amplifierPlan.standbyQuantity} standby + ${amplifierPlan.looseSpareQuantity} loose spare = ${amplifierPlan.purchaseQuantity} purchase.</p>${bidding.enabled ? `<h3>Proposal bid allowance</h3><table><tbody><tr><td>Modelled design sources</td><td>${bidding.modelledQuantity}</td></tr><tr><td>Installed bid quantity</td><td>${bidding.installedQuantity} (${bidding.quantityAllowance} allowance)</td></tr><tr><td>Loose spares / total purchase</td><td>${bidding.looseSpareQuantity} / ${bidding.purchaseQuantity}</td></tr><tr><td>Estimated installed load</td><td>${round(bidding.estimatedConnectedLoad, 1)} W</td></tr><tr><td>Minimum amplifier capacity</td><td>${round(bidding.amplifierCapacity, 0)} W</td></tr></tbody></table>` : ""}${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
-      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Group</th><th>Circuit</th><th>Scenario</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="11">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
+      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Group</th><th>Circuit</th><th>Scenario</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="11">No sources</td></tr>`}</tbody></table><h3>Model limitations</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p></section>`;
   }
   function bindEvents() {
     document.querySelectorAll("[data-project-field]").forEach((control) => {
@@ -6925,6 +7583,12 @@ kbd {
         if (control.type === "checkbox") project[key] = control.checked;
         else if (control.type === "number" || control.type === "range") project[key] = Number(control.value);
         else project[key] = control.value;
+        if (["amplifierUnitRating", "amplifierMaxLoadPercent", "amplifierAllocationMode", "amplifierStandbyPerGroup", "amplifierLooseSparePercent"].includes(key)) {
+          project.updatedAt = new Date().toISOString();
+          updateAmplifierDisplay();
+          debounceSave();
+          return;
+        }
         if (["width", "depth"].includes(key)) {
           project.sources.forEach((source) => {
             source.x = Model.clamp(source.x, 0, project.width);
@@ -6943,6 +7607,12 @@ kbd {
     });
 
     document.getElementById("autoAssignCircuitsButton").addEventListener("click", autoAssignExistingCircuits);
+    document.getElementById("coverageViewTab").addEventListener("click", () => setWorkspaceView("coverage"));
+    document.getElementById("amplifierViewTab").addEventListener("click", () => setWorkspaceView("amplifier"));
+    document.getElementById("printAmplifierButton").addEventListener("click", () => {
+      updatePrintReport();
+      window.setTimeout(() => window.print(), 60);
+    });
 
     document.querySelectorAll(".mode-option").forEach((button) => {
       button.addEventListener("click", () => {

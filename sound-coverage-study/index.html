@@ -41,7 +41,12 @@
     </nav>
   </header>
 
-  <main class="app-shell">
+  <nav class="view-tabs" role="tablist" aria-label="Engineering workspace">
+    <button class="view-tab active" id="coverageViewTab" type="button" role="tab" aria-selected="true" aria-controls="coverageView">Coverage study</button>
+    <button class="view-tab" id="amplifierViewTab" type="button" role="tab" aria-selected="false" aria-controls="amplifierView">Amplifier sizing</button>
+  </nav>
+
+  <main class="app-shell" id="coverageView" role="tabpanel" aria-labelledby="coverageViewTab">
     <aside class="control-panel panel-scroll" aria-label="Study controls">
       <section class="panel-section project-heading">
         <div class="section-kicker">Project setup</div>
@@ -188,6 +193,52 @@
           </label>
         </div>
         <div class="source-note" id="sourceOutputRequirementNote"></div>
+        <div class="section-kicker redundancy-kicker">Redundancy scenario</div>
+        <div class="redundancy-panel">
+          <div class="field-grid two redundancy-switches">
+            <label class="check-row"><input data-project-field="scenarioGroupAEnabled" type="checkbox"><span>Group A operating</span></label>
+            <label class="check-row"><input data-project-field="scenarioGroupBEnabled" type="checkbox"><span>Group B operating</span></label>
+          </div>
+          <label class="field full">
+            <span>Auto-assign speakers per circuit</span>
+            <input data-project-field="speakersPerCircuit" type="number" min="1" max="1000" step="1">
+          </label>
+          <button class="button secondary" id="autoAssignCircuitsButton" type="button">Auto-assign all placed speakers</button>
+          <p class="microcopy">Auto-assign alternates A/B and overwrites every placed speaker circuit using the capacity above.</p>
+          <label class="field full">
+            <span>Out-of-service circuit</span>
+            <select id="scenarioOutageCircuit" data-project-field="scenarioOutageCircuit"><option value="">No circuit outage</option></select>
+          </label>
+          <div class="circuit-scenario-summary" id="circuitScenarioSummary"></div>
+          <p class="microcopy">Assign every speaker to Group A or B and enter its circuit in the source inspector or batch editor. Auto-placement uses the speaker-per-circuit setting; actual circuit quantities and loads are derived from the placed speakers.</p>
+        </div>
+        <div class="section-kicker bidding-kicker">Proposal estimate</div>
+        <label class="check-row bidding-mode-toggle">
+          <input data-project-field="biddingModeEnabled" type="checkbox">
+          <span><b>Apply bidding allowances</b><small>Add proposal reserve and commercial quantity/load allowances.</small></span>
+        </label>
+        <div class="bidding-allowance-panel" id="biddingAllowanceFields" hidden>
+          <div class="field-grid two">
+            <label class="field">
+              <span>Acoustic reserve <b>dB</b></span>
+              <input data-project-field="biddingAcousticReserve" type="number" min="0" max="20" step="0.5">
+            </label>
+            <label class="field">
+              <span>Installed quantity allowance <b>%</b></span>
+              <input data-project-field="biddingQuantityAllowance" type="number" min="0" max="500" step="5">
+            </label>
+            <label class="field">
+              <span>Bid amplifier headroom <b>%</b></span>
+              <input data-project-field="biddingAmplifierHeadroom" type="number" min="0" max="500" step="5">
+            </label>
+            <label class="field">
+              <span>Loose spare speakers <b>%</b></span>
+              <input data-project-field="biddingLooseSparePercent" type="number" min="0" max="500" step="1">
+            </label>
+          </div>
+          <div class="bidding-allowance-summary" id="biddingAllowanceSummary"></div>
+          <p class="microcopy">The acoustic reserve is added to every project/noise-zone target. Quantity allowance and loose spares affect the proposal schedule only. Amplifier capacity is calculated from the estimated installed load after quantity allowance.</p>
+        </div>
       </section>
 
       <details class="panel-section disclosure">
@@ -202,10 +253,7 @@
               <span>Air loss <b>dB/100m</b></span>
               <input data-project-field="airLossPer100m" type="number" min="0" max="100" step="0.1">
             </label>
-            <label class="field">
-              <span>Amp headroom <b>%</b></span>
-              <input data-project-field="amplifierHeadroom" type="number" min="0" max="500" step="5">
-            </label>
+
             <label class="field">
               <span>Heatmap opacity</span>
               <input data-project-field="heatmapOpacity" type="range" min="0.1" max="1" step="0.05">
@@ -328,6 +376,79 @@
     </aside>
   </main>
 
+  <main class="amplifier-view" id="amplifierView" role="tabpanel" aria-labelledby="amplifierViewTab" hidden>
+    <aside class="amplifier-controls panel-scroll" aria-label="Amplifier sizing assumptions">
+      <section class="panel-section">
+        <div class="section-kicker">Electrical design</div>
+        <h2>Amplifier assumptions</h2>
+        <p class="microcopy">Sizing uses the tap load of every enabled speaker and its assigned A/B circuit. The coverage failure switches do not reduce the installed amplifier design quantity.</p>
+      </section>
+      <section class="panel-section">
+        <label class="field full">
+          <span>Allocation architecture</span>
+          <select data-project-field="amplifierAllocationMode">
+            <option value="perCircuit">Dedicated capacity per circuit</option>
+            <option value="pooledByGroup">Pooled amplifier bank per A/B group</option>
+          </select>
+        </label>
+        <div class="field-grid two amplifier-fields">
+          <label class="field">
+            <span>Amplifier rating <b>W</b></span>
+            <input data-project-field="amplifierUnitRating" type="number" min="1" max="1000000" step="1" list="amplifierRatingPresets">
+            <datalist id="amplifierRatingPresets"><option value="120"></option><option value="250"></option><option value="500"></option><option value="1000"></option><option value="2000"></option></datalist>
+          </label>
+          <label class="field">
+            <span>Maximum loading <b>%</b></span>
+            <input data-project-field="amplifierMaxLoadPercent" type="number" min="1" max="100" step="1">
+          </label>
+          <label class="field">
+            <span>Standby units <b>per active group</b></span>
+            <input data-project-field="amplifierStandbyPerGroup" type="number" min="0" max="1000" step="1">
+          </label>
+          <label class="field">
+            <span>Loose spare amplifiers <b>%</b></span>
+            <input data-project-field="amplifierLooseSparePercent" type="number" min="0" max="500" step="1">
+          </label>
+        </div>
+      </section>
+      <section class="panel-section amplifier-method-note">
+        <div class="section-kicker">Calculation basis</div>
+        <p><b>Usable capacity per amplifier</b><br><code>Rated power × maximum loading %</code></p>
+        <p><b>Online quantity</b><br><code>ceil(design load ÷ usable capacity)</code></p>
+        <p class="microcopy">Dedicated mode rounds each circuit separately and is conservative. Pooled mode rounds the total load of Group A and Group B separately. When bidding mode is on, its speaker quantity allowance and bid amplifier headroom are applied before this tab's maximum-loading limit. Standby units and loose purchasing spares are added after the online quantity.</p>
+      </section>
+    </aside>
+
+    <section class="amplifier-results panel-scroll" aria-label="Amplifier sizing results">
+      <div class="amplifier-heading">
+        <div><div class="section-kicker">PAGA amplifier schedule</div><h1>Amplifier capacity and quantities</h1><p id="amplifierBasisNote"></p></div>
+        <button class="button primary" id="printAmplifierButton" type="button">Print study</button>
+      </div>
+      <div class="amplifier-metrics">
+        <article class="amplifier-metric"><span>Amplifier sizing load</span><strong id="amplifierDesignLoad">0 W</strong><small id="amplifierBaseLoad">0 W modelled</small></article>
+        <article class="amplifier-metric"><span>Online amplifiers</span><strong id="amplifierOnlineQuantity">0</strong><small id="amplifierOnlineCapacity">0 W nameplate</small></article>
+        <article class="amplifier-metric"><span>Installed incl. standby</span><strong id="amplifierInstalledQuantity">0</strong><small id="amplifierStandbyQuantity">0 standby</small></article>
+        <article class="amplifier-metric emphasis"><span>Total purchase quantity</span><strong id="amplifierPurchaseQuantity">0</strong><small id="amplifierLooseSpareQuantity">0 loose spare</small></article>
+      </div>
+      <div class="amplifier-grid">
+        <section class="amplifier-card">
+          <div class="section-heading-row"><div><div class="section-kicker">Redundancy banks</div><h2>Group A / B summary</h2></div><span class="criteria-chip" id="amplifierLoadingChip">0% loaded</span></div>
+          <div class="table-scroll"><table class="engineering-table"><thead><tr><th>Group</th><th>Circuits</th><th>Speakers</th><th>Modelled load</th><th>Design load</th><th>Online</th><th>Standby</th><th>Installed</th></tr></thead><tbody id="amplifierGroupBody"></tbody></table></div>
+        </section>
+        <section class="amplifier-card">
+          <div class="section-kicker">Allocation schedule</div>
+          <h2 id="amplifierAllocationTitle">Dedicated circuit sizing</h2>
+          <div class="table-scroll"><table class="engineering-table"><thead><tr><th>Group</th><th>Circuit / bank</th><th>Circuits</th><th>Speakers</th><th>Design load</th><th>Online amps</th><th>Scenario</th><th>Note</th></tr></thead><tbody id="amplifierAllocationBody"></tbody></table></div>
+        </section>
+      </div>
+      <section class="amplifier-card amplifier-checks">
+        <div class="section-kicker">Design checks</div>
+        <h2>Capacity statement</h2>
+        <div id="amplifierWarnings"></div>
+      </section>
+    </section>
+  </main>
+
   <dialog class="modal guide-modal" id="guideDialog" aria-labelledby="guideTitle">
     <div class="modal-header">
       <div>
@@ -338,7 +459,7 @@
     </div>
     <div class="modal-body guide-layout">
       <section class="method-callout">
-        <div class="method-icon" aria-hidden="true">1-7</div>
+        <div class="method-icon" aria-hidden="true">1-10</div>
         <div>
           <strong>Recommended workflow</strong>
           <p>Set the project basis first, calibrate the plan, define each receiver requirement, then configure and place sources. Check both area compliance and loudspeaker equipment qualification before printing the study.</p>
@@ -348,9 +469,12 @@
         <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
         <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
         <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
-        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles appear in the Device list and keep their MTO material IDs. Then set mounting height, aim, class, and verified losses.</span></li>
+        <li><strong>Check A/B redundancy.</strong><span>Assign each speaker to Group A or B and a circuit. Set the auto-assignment speaker capacity per circuit, then switch either group off or select one out-of-service circuit to recalculate coverage. The summary shows the actual circuit count and speakers per circuit.</span></li>
+        <li><strong>Apply proposal allowances when required.</strong><span>Enable <b>Apply bidding allowances</b>. The acoustic reserve raises every receiver target; installed quantity, amplifier headroom, and loose-spare percentages then produce a separate proposal estimate without changing each placed source tap.</span></li>
+        <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles keep their MTO material IDs, network identity, technical specifications, and available placement-height defaults. This command imports material profiles only; existing MTO takeoff placements are not added to the study. Then set mounting height, aim, class, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
+        <li><strong>Size the amplifier system.</strong><span>Open <b>Amplifier sizing</b>. Choose dedicated circuit capacity or pooled A/B banks, then enter the selected amplifier rating, maximum loading, standby units per group, and loose amplifier spares. Review every circuit/bank before using the purchase quantity.</span></li>
         <li><strong>Review and issue.</strong><span>Switch between Compliance, Sound level, and S/N margin. Verify zone targets, equipment qualification, connected load, and model limitations. <b>Export</b> creates one JSON that can be reopened here or loaded in Telecom MTO Lite under <b>Setup &gt; Project &gt; Load</b>. Export the grid CSV separately, then print the study.</span></li>
       </ol>
       <section class="guide-reference" id="referenceConditionGuide">
@@ -412,19 +536,6 @@
           <article><span>Public address</span><strong>78.32 dBA</strong><small>Reported average; 48 dBA average ambient</small></article>
           <article><span>Emergency siren</span><strong>99.32 dBC</strong><small>Reported average; 80 dBC average ambient</small></article>
           <article><span>ESS source reference</span><strong>118 dBC @ 30 m</strong><small>1000 Hz study value for MOD8032B</small></article>
-        </div>
-      </section>
-
-      <section>
-        <h3>Source register</h3>
-        <div class="source-register">
-          <a href="../CE-040449-001_SOUND%20COVERAGE%20STUDY%20FOR%20IN-PLANT%20PAGING%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040449-001</b><span>In-Plant Paging IFC study · formulas §2.4–2.5, criteria §3.1, assumptions §3.2</span></a>
-          <a href="../CE-040450-001_SOUND%20COVERAGE%20STUDY%20FOR%20EMERGENCY%20SIREN%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040450-001</b><span>Emergency Siren IFC study · criteria, 15 m mounting, MOD8032B reference</span></a>
-          <a href="../CE-040451-001_SOUND%20COVERAGE%20STUDY%20FOR%20PUBLIC%20ADDRESS%20SYSTEM(IFC,%20Rev.00A).docx"><b>CE-040451-001</b><span>Public Address IFC study · criteria, assumptions, study benchmark</span></a>
-          <a href="../Maintenance%20Building_PAGA.pdf"><b>Maintenance Building_PAGA.pdf</b><span>Equipment schedule: 25 W and 15 W horns, 6 W ceiling speakers; minimum 2.5 m mounting note</span></a>
-          <a href="../Substation%20PAGA.pdf"><b>Substation PAGA.pdf</b><span>Equipment schedule and installation notes for IPPS layouts</span></a>
-          <a href="../Block%20Diagram%20PAGA.pdf"><b>Block Diagram PAGA.pdf</b><span>PAGA/IPPS topology and speaker-loop context</span></a>
-          <a href="../Acoustic%20Study.pdf"><b>Acoustic Study.pdf</b><span>Preserved repository source; the stored bytes do not expose a valid PDF header and could not be parsed</span></a>
         </div>
       </section>
 

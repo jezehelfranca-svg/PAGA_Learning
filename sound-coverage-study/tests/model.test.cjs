@@ -53,6 +53,67 @@ test("two equal incoherent sources add approximately 3.01 dB", () => {
   assert.ok(Math.abs(combined - 83.0103) < 0.001);
 });
 
+test("proposal bidding mode adds acoustic reserve to project and noise-zone targets", () => {
+  const project = simpleProject();
+  project.ambientLevel = 80;
+  project.minimumLevel = 0;
+  project.requiredMargin = 10;
+  assert.equal(Model.targetForNoise(project, 80), 90);
+  project.biddingModeEnabled = true;
+  project.biddingAcousticReserve = 3;
+  assert.equal(Model.targetForNoise(project, 80), 93);
+  assert.equal(Model.targetForNoiseZone(project, { level: 70, requiredMargin: 5 }), 78);
+});
+
+test("proposal bidding estimate applies quantity, load, amplifier, and loose-spare allowances", () => {
+  const project = simpleProject();
+  project.biddingModeEnabled = true;
+  project.biddingQuantityAllowance = 25;
+  project.biddingAmplifierHeadroom = 25;
+  project.biddingLooseSparePercent = 5;
+  const estimate = Model.calculateBiddingEstimate(project, { sourceCount: 40, connectedLoad: 1000 });
+  assert.equal(estimate.installedQuantity, 50);
+  assert.equal(estimate.quantityAllowance, 10);
+  assert.equal(estimate.looseSpareQuantity, 3);
+  assert.equal(estimate.purchaseQuantity, 53);
+  assert.equal(estimate.estimatedConnectedLoad, 1250);
+  assert.equal(estimate.amplifierCapacity, 1562.5);
+});
+
+test("maximum exposure remains visible when a proposal target is also unmet", () => {
+  const project = simpleProject();
+  project.ambientLevel = 105;
+  project.requiredMargin = 10;
+  project.minimumLevel = 0;
+  project.maximumLevel = 110;
+  project.enforceMaximum = true;
+  project.sources = [source({ referenceSpl: 132 })];
+  const result = Model.calculatePoint(project, 10, 0);
+  assert.equal(result.level, 112);
+  assert.equal(result.target, 115);
+  assert.equal(result.status, "over");
+  const summary = Model.summarizeGrid({ points: [result], spacing: 1 }, project);
+  assert.equal(summary.audiblePercent, 0);
+  assert.equal(summary.overPercent, 100);
+});
+test("proposal bidding fields survive JSON sanitization", () => {
+  const project = Model.sanitizeProject({
+    mode: "publicAddress",
+    biddingModeEnabled: true,
+    biddingAcousticReserve: 4,
+    biddingQuantityAllowance: 30,
+    biddingAmplifierHeadroom: 35,
+    biddingLooseSparePercent: 8,
+  });
+  assert.equal(project.biddingModeEnabled, true);
+  assert.equal(project.biddingAcousticReserve, 4);
+  assert.equal(project.biddingQuantityAllowance, 30);
+  assert.equal(project.biddingAmplifierHeadroom, 35);
+  assert.equal(project.biddingLooseSparePercent, 8);
+  const session = Model.buildMtoProjectSession(project);
+  assert.equal(session.biddingModeEnabled, true);
+  assert.equal(session.biddingQuantityAllowance, 30);
+});
 test("ambient zones override the project background and set the margin target", () => {
   const project = simpleProject();
   project.ambientLevel = 55;
@@ -730,4 +791,283 @@ test("project sanitization preserves imported material profiles and source mater
   assert.equal(sanitized.materialProfiles[0].id, "linked-material");
   assert.equal(sanitized.sources[0].mtoMaterialId, "linked-material");
   assert.equal(sanitized.sources[0].presetKey, "mto:linked-material");
+});
+
+test("Telecom MTO 2.4 project material import preserves CTGU speaker specifications and derives placement defaults", () => {
+  const customSymbol = {
+    key: "custom_ctgu_speaker",
+    name: "CTGU PAGA Speaker",
+    dataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+  };
+  const payload = {
+    version: "2.4",
+    materials: [{
+      id: "mat-paga-speaker-a",
+      name: "OUTDOOR PAGA LOUDSPEAKER A",
+      type: "point",
+      category: "PAGA",
+      color: "#F59E0B",
+      unit: "pcs",
+      layer: "E-PA-EQUP-SPKR",
+      symbol: "custom_ctgu_speaker",
+      network: "A",
+      networkColor: "Orange",
+      coverage: {
+        type: "paga",
+        enabled: true,
+        spl: 119,
+        sensitivity: 105.021,
+        power: 25,
+        ambientNoise: 90,
+        targetMargin: 15,
+        radiusM: 5,
+        dispersionAngle: 180,
+        color: "#F59E0B44",
+      },
+      technicalSpec: {
+        nominalPowerW: 25,
+        selectableTapsW: [12, 25],
+        weatherproofMinSPLdBA1mAt25W: 124,
+        flameproofMinSPLdBA1mAt25W: 119,
+        minimumIngressProtection: "IP65",
+        mounting: "Wall or steel structure mounted",
+        hazardousArea: "Zone 1/Zone 2",
+        bidNoiseZoning: { general: "85 dBA / 12 m", high: "90 dBA / 8 m" },
+        finalDesignRequirement: "Noise map + acoustic/STI study",
+      },
+    }],
+    takeoffs: [
+      { materialId: "mat-paga-speaker-a", metadata: { mountingHeightM: 5 } },
+      { materialId: "mat-paga-speaker-a", metadata: { mountingHeightM: "5" } },
+      { materialId: "mat-paga-speaker-a", metadata: { mountingHeightM: 6 } },
+    ],
+    customSvgSymbols: [customSymbol],
+  };
+
+  const profiles = Model.importPagaMaterialProfiles(payload);
+  assert.equal(profiles.length, 1);
+  const profile = profiles[0];
+  assert.equal(profile.network, "A");
+  assert.equal(profile.networkColor, "Orange");
+  assert.deepEqual(profile.technicalSpec.selectableTapsW, [12, 25]);
+  assert.equal(profile.technicalSpec.minimumIngressProtection, "IP65");
+  assert.equal(profile.sourceDefaults.mountingHeightM, 5);
+  assert.equal(profile.sourceDefaults.loop, "PAGA-A");
+  assert.equal(profile.sourceDefaults.placementCount, 3);
+  assert.deepEqual(profile.customSvgSymbol, customSymbol);
+  assert.equal(profile.coverage.verticalSeparationM, 3.5);
+  assert.ok(Math.abs(profile.coverage.slantRadiusM - Math.hypot(5, 3.5)) < 1e-9);
+
+  const preset = Model.devicePresetFromMtoMaterial(profile);
+  const placed = Model.instantiateDevice(preset);
+  assert.equal(placed.z, 5);
+  assert.equal(placed.loop, "PAGA-A");
+  assert.equal(placed.ratedPower, 25);
+
+  const project = simpleProject();
+  project.materialProfiles = profiles;
+  project.sources = [placed];
+  const session = Model.buildMtoProjectSession(project);
+  assert.equal(session.materials[0].id, "mat-paga-speaker-a");
+  assert.equal(session.materials[0].network, "A");
+  assert.deepEqual(session.materials[0].technicalSpec.selectableTapsW, [12, 25]);
+  assert.equal(session.materials[0].customSvgSymbol, undefined);
+  assert.equal(session.materials[0].sourceDefaults, undefined);
+  assert.deepEqual(session.customSvgSymbols, [customSymbol]);
+});
+
+test("A/B group switches and a selected circuit outage change the acoustic result", () => {
+  const project = simpleProject();
+  project.sources = [
+    source({ id: "a-1", redundancyGroup: "A", loop: "C1" }),
+    source({ id: "b-1", redundancyGroup: "B", loop: "C1" }),
+  ];
+
+  const normal = Model.calculatePoint(project, 10, 0);
+  assert.ok(Math.abs(normal.level - 83.0103) < 0.001);
+
+  project.scenarioGroupBEnabled = false;
+  const groupBOut = Model.calculatePoint(project, 10, 0);
+  assert.ok(Math.abs(groupBOut.level - 80) < 0.001);
+
+  project.scenarioGroupBEnabled = true;
+  project.scenarioOutageCircuit = "A::C1";
+  const circuitAOut = Model.calculatePoint(project, 10, 0);
+  assert.ok(Math.abs(circuitAOut.level - 80) < 0.001);
+  assert.equal(Model.sourceActiveInScenario(project, project.sources[0]), false);
+  assert.equal(Model.sourceActiveInScenario(project, project.sources[1]), true);
+});
+
+test("circuit summary separates identical circuit names by A/B group and derives loads", () => {
+  const project = simpleProject();
+  project.amplifierHeadroom = 20;
+  project.scenarioOutageCircuit = "B::C1";
+  project.sources = [
+    source({ redundancyGroup: "A", loop: "C1", tapPower: 10 }),
+    source({ redundancyGroup: "A", loop: "C1", tapPower: 5 }),
+    source({ redundancyGroup: "B", loop: "C1", tapPower: 20 }),
+  ];
+
+  const circuits = Model.summarizeCircuits(project);
+  assert.equal(circuits.length, 2);
+  assert.deepEqual(circuits.map(({ key, count, connectedLoad, withHeadroom, scenarioActive }) => ({ key, count, connectedLoad, withHeadroom, scenarioActive })), [
+    { key: "A::C1", count: 2, connectedLoad: 15, withHeadroom: 18, scenarioActive: true },
+    { key: "B::C1", count: 1, connectedLoad: 20, withHeadroom: 24, scenarioActive: false },
+  ]);
+});
+
+test("outage scenarios do not reduce the installed bidding basis", () => {
+  const project = simpleProject();
+  project.biddingModeEnabled = true;
+  project.biddingQuantityAllowance = 0;
+  project.scenarioGroupBEnabled = false;
+  project.sources = [
+    source({ redundancyGroup: "A", loop: "A-C1", tapPower: 10 }),
+    source({ redundancyGroup: "B", loop: "B-C1", tapPower: 20 }),
+  ];
+  const point = Model.calculatePoint(project, 10, 0);
+  const summary = Model.summarizeGrid({ points: [point], spacing: 1 }, project);
+
+  assert.equal(summary.sourceCount, 1);
+  assert.equal(summary.designSourceCount, 2);
+  assert.equal(summary.connectedLoad, 10);
+  assert.equal(summary.designConnectedLoad, 30);
+  assert.equal(summary.bidding.modelledQuantity, 2);
+  assert.equal(summary.bidding.estimatedConnectedLoad, 30);
+});
+
+test("project JSON sanitization preserves redundancy scenario and speaker assignment", () => {
+  const project = Model.sanitizeProject({
+    mode: "paging",
+    scenarioGroupAEnabled: false,
+    scenarioGroupBEnabled: true,
+    speakersPerCircuit: 12,
+    scenarioOutageCircuit: "B::B-C2",
+    sources: [{ redundancyGroup: "b", loop: "B-C2" }],
+  });
+
+  assert.equal(project.scenarioGroupAEnabled, false);
+  assert.equal(project.scenarioGroupBEnabled, true);
+  assert.equal(project.speakersPerCircuit, 12);
+  assert.equal(project.scenarioOutageCircuit, "B::B-C2");
+  assert.equal(project.sources[0].redundancyGroup, "B");
+  assert.equal(project.sources[0].loop, "B-C2");
+});
+
+test("automatic placement alternates A/B speakers and assigns eight per group circuit", () => {
+  const points = Array.from({ length: 18 }, (_, index) => ({ x: index, y: 0 }));
+  const sources = Model.createPlacementSources("custom", { points });
+
+  assert.equal(sources[0].redundancyGroup, "A");
+  assert.equal(sources[0].loop, "A-C1");
+  assert.equal(sources[1].redundancyGroup, "B");
+  assert.equal(sources[1].loop, "B-C1");
+  assert.equal(sources[16].redundancyGroup, "A");
+  assert.equal(sources[16].loop, "A-C2");
+  assert.equal(sources[17].redundancyGroup, "B");
+  assert.equal(sources[17].loop, "B-C2");
+  const smallerCircuits = Model.createPlacementSources("custom", { points: points.slice(0, 6) }, { speakersPerCircuit: 2 });
+  assert.equal(smallerCircuits[4].loop, "A-C2");
+  assert.equal(smallerCircuits[5].loop, "B-C2");
+  const reassigned = Array.from({ length: 7 }, () => source({ redundancyGroup: "A", loop: "OLD" }));
+  Model.assignSourcesToCircuits(reassigned, 2);
+  assert.deepEqual(reassigned.map((item) => `${item.redundancyGroup}:${item.loop}`), ["A:A-C1", "B:B-C1", "A:A-C1", "B:B-C1", "A:A-C2", "B:B-C2", "A:A-C2"]);
+});
+
+test("Telecom MTO export carries speaker group and circuit metadata", () => {
+  const project = simpleProject();
+  project.sources = [source({ redundancyGroup: "B", loop: "B-C3" })];
+  const session = Model.buildMtoProjectSession(project);
+  const acoustic = session.takeoffs[0].metadata.pagaAcoustic;
+
+  assert.equal(acoustic.redundancyGroup, "B");
+  assert.equal(acoustic.circuit, "B-C3");
+  assert.equal(acoustic.circuitKey, "B::B-C3");
+});
+test("dedicated circuit amplifier sizing rounds each circuit and adds A/B standby quantities", () => {
+  const project = simpleProject();
+  project.amplifierUnitRating = 500;
+  project.amplifierMaxLoadPercent = 80;
+  project.amplifierAllocationMode = "perCircuit";
+  project.amplifierStandbyPerGroup = 1;
+  project.amplifierLooseSparePercent = 10;
+  project.sources = [
+    source({ redundancyGroup: "A", loop: "A-C1", tapPower: 100, ratedPower: 100 }),
+    source({ redundancyGroup: "A", loop: "A-C2", tapPower: 300, ratedPower: 300 }),
+    source({ redundancyGroup: "B", loop: "B-C1", tapPower: 401, ratedPower: 401 }),
+  ];
+
+  const plan = Model.calculateAmplifierPlan(project);
+  assert.equal(plan.usableCapacityPerUnit, 400);
+  assert.equal(plan.designLoad, 801);
+  assert.equal(plan.onlineQuantity, 4);
+  assert.equal(plan.standbyQuantity, 2);
+  assert.equal(plan.installedQuantity, 6);
+  assert.equal(plan.looseSpareQuantity, 1);
+  assert.equal(plan.purchaseQuantity, 7);
+  assert.equal(plan.groups[0].onlineQuantity, 2);
+  assert.equal(plan.groups[1].onlineQuantity, 2);
+  assert.equal(plan.rows.find((row) => row.key === "B::B-C1").requiresCircuitSplit, true);
+});
+
+test("pooled A/B amplifier sizing rounds each redundancy bank instead of every circuit", () => {
+  const project = simpleProject();
+  project.amplifierUnitRating = 500;
+  project.amplifierMaxLoadPercent = 80;
+  project.amplifierAllocationMode = "pooledByGroup";
+  project.amplifierStandbyPerGroup = 1;
+  project.amplifierLooseSparePercent = 10;
+  project.sources = [
+    source({ redundancyGroup: "A", loop: "A-C1", tapPower: 100, ratedPower: 100 }),
+    source({ redundancyGroup: "A", loop: "A-C2", tapPower: 300, ratedPower: 300 }),
+    source({ redundancyGroup: "B", loop: "B-C1", tapPower: 401, ratedPower: 401 }),
+  ];
+
+  const plan = Model.calculateAmplifierPlan(project);
+  assert.equal(plan.rows.length, 2);
+  assert.equal(plan.onlineQuantity, 3);
+  assert.equal(plan.standbyQuantity, 2);
+  assert.equal(plan.installedQuantity, 5);
+  assert.equal(plan.looseSpareQuantity, 1);
+  assert.equal(plan.purchaseQuantity, 6);
+});
+
+test("amplifier design uses the bidding speaker allowance but not the selected outage scenario", () => {
+  const project = simpleProject();
+  project.biddingModeEnabled = true;
+  project.biddingQuantityAllowance = 50;
+  project.amplifierUnitRating = 250;
+  project.amplifierMaxLoadPercent = 80;
+  project.amplifierStandbyPerGroup = 0;
+  project.scenarioGroupBEnabled = false;
+  project.sources = [
+    source({ redundancyGroup: "A", loop: "A-C1", tapPower: 150, ratedPower: 150 }),
+    source({ redundancyGroup: "B", loop: "B-C1", tapPower: 150, ratedPower: 150 }),
+  ];
+
+  const plan = Model.calculateAmplifierPlan(project);
+  assert.equal(plan.quantityLoadScale, 1.5);
+  assert.equal(plan.biddingHeadroomFactor, 1.25);
+  assert.equal(plan.loadScale, 1.875);
+  assert.equal(plan.designLoad, 562.5);
+  assert.equal(plan.scenarioLoad, 150);
+  assert.equal(plan.onlineQuantity, 4);
+  assert.equal(plan.installedSpeakerCount, 3);
+});
+
+test("amplifier settings survive project JSON sanitization", () => {
+  const project = Model.sanitizeProject({
+    mode: "paging",
+    amplifierUnitRating: 1000,
+    amplifierMaxLoadPercent: 75,
+    amplifierAllocationMode: "pooledByGroup",
+    amplifierStandbyPerGroup: 2,
+    amplifierLooseSparePercent: 15,
+  });
+
+  assert.equal(project.amplifierUnitRating, 1000);
+  assert.equal(project.amplifierMaxLoadPercent, 75);
+  assert.equal(project.amplifierAllocationMode, "pooledByGroup");
+  assert.equal(project.amplifierStandbyPerGroup, 2);
+  assert.equal(project.amplifierLooseSparePercent, 15);
 });

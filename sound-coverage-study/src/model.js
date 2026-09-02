@@ -53,7 +53,7 @@
       enforceMaximum: false,
       fixedLoss: 0,
       note: "At least 15 dB above ambient. The source study states a 105 dBA personnel limit while mapping in dBC, so the maximum is not enforced until weightings are reconciled.",
-      sourceRef: "CE-040450-001, sections 3.1-3.2 (document pages 7-8)",
+      sourceRef: "Verify criteria against the applicable project requirements before issue.",
     },
   });
 
@@ -330,6 +330,31 @@
     );
   }
 
+  function biddingAcousticReserve(project) {
+    return project && project.biddingModeEnabled
+      ? Math.max(0, finiteNumber(project.biddingAcousticReserve, 3))
+      : 0;
+  }
+
+  function normalizeRedundancyGroup(value) {
+    return String(value || "A").trim().toUpperCase() === "B" ? "B" : "A";
+  }
+
+  function sourceCircuitKey(source) {
+    const group = normalizeRedundancyGroup(source && source.redundancyGroup);
+    const circuit = String(source && source.loop || "Unassigned").trim() || "Unassigned";
+    return `${group}::${circuit}`;
+  }
+
+  function sourceActiveInScenario(project, source) {
+    if (!source || source.enabled === false) return false;
+    const group = normalizeRedundancyGroup(source.redundancyGroup);
+    if (group === "A" && project && project.scenarioGroupAEnabled === false) return false;
+    if (group === "B" && project && project.scenarioGroupBEnabled === false) return false;
+    const outageCircuit = String(project && project.scenarioOutageCircuit || "");
+    return !outageCircuit || sourceCircuitKey(source) !== outageCircuit;
+  }
+
   function targetForNoiseZone(project, zone) {
     const ambient = finiteNumber(zone && zone.level, finiteNumber(project.ambientLevel, 0));
     const margin = zone && zone.requiredMargin != null && zone.requiredMargin !== ""
@@ -338,7 +363,7 @@
     const minimum = zone && zone.minimumLevel != null && zone.minimumLevel !== ""
       ? finiteNumber(zone.minimumLevel, finiteNumber(project.minimumLevel, 0))
       : finiteNumber(project.minimumLevel, 0);
-    return Math.max(minimum, ambient + margin);
+    return Math.max(minimum, ambient + margin) + biddingAcousticReserve(project);
   }
 
   function noiseRequirementAtPoint(project, x, y) {
@@ -365,11 +390,11 @@
     return Math.max(
       finiteNumber(project.minimumLevel, 0),
       ambient + Math.max(0, finiteNumber(project.requiredMargin, 0)),
-    );
+    ) + biddingAcousticReserve(project);
   }
 
   function calculatePoint(project, x, y) {
-    const sources = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false) : [];
+    const sources = Array.isArray(project.sources) ? project.sources.filter((source) => sourceActiveInScenario(project, source)) : [];
     const levels = sources.map((source) => sourceLevelAtPoint(project, source, x, y));
     const level = energeticSum(levels);
     const requirement = noiseRequirementAtPoint(project, x, y);
@@ -380,8 +405,8 @@
     const maximum = finiteNumber(project.maximumLevel, Infinity);
     let status = "empty";
     if (Number.isFinite(level)) {
-      if (level < target) status = "below";
-      else if (enforceMaximum && level > maximum) status = "over";
+      if (enforceMaximum && level > maximum) status = "over";
+      else if (level < target) status = "below";
       else status = "compliant";
     }
     return { x, y, level, ambient, target, margin, status };
@@ -462,19 +487,25 @@
   }
 
   function createPlacementSources(deviceKey, placementGrid, options = {}) {
+    const speakersPerCircuit = Math.max(1, Math.round(finiteNumber(options.speakersPerCircuit, 8)));
     return placementGrid.points.map((point, index) => {
+      const redundancyGroup = index % 2 === 0 ? "A" : "B";
+      const groupSequence = Math.floor(index / 2);
       return instantiateDevice(deviceKey, {
         name: `AUTO-${String(index + 1).padStart(3, "0")}`,
         x: point.x,
         y: point.y,
         azimuth: 0,
-        loop: `AUTO-${Math.max(1, Math.ceil((index + 1) / 8))}`,
+        redundancyGroup,
+        loop: `${redundancyGroup}-C${Math.max(1, Math.ceil((groupSequence + 1) / speakersPerCircuit))}`,
       });
     });
   }
 
   function assessPlacementGrid(project, deviceKey, rectangle, placementGrid, options = {}, sampleSet = null) {
-    const designMargin = clamp(finiteNumber(options.designMargin, 3), 0, 20);
+    const requestedDesignMargin = clamp(finiteNumber(options.designMargin, 3), 0, 20);
+    const proposalReserve = biddingAcousticReserve(project);
+    const designMargin = Math.max(0, requestedDesignMargin - proposalReserve);
     const includeExisting = options.includeExisting !== false;
     const existingSources = includeExisting && Array.isArray(project.sources) ? project.sources : [];
     const proposedSources = createPlacementSources(deviceKey, placementGrid, options);
@@ -512,7 +543,8 @@
       minimumReserve,
       maximumLevel,
       worstPoint,
-      designMargin,
+      designMargin: Math.max(requestedDesignMargin, proposalReserve),
+      additionalDesignMargin: designMargin,
       sampleSpacing: samples.spacing,
       proposedSources,
     };
@@ -624,11 +656,15 @@
     const levels = finite.map((point) => point.level);
     const average = levels.length ? energeticSum(levels) - 10 * Math.log10(levels.length) : -Infinity;
     const arithmeticAverage = levels.length ? levels.reduce((sum, level) => sum + level, 0) / levels.length : -Infinity;
-    const sourceCount = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false).length : 0;
-    const connectedLoad = Array.isArray(project.sources)
-      ? project.sources.filter((source) => source.enabled !== false).reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0)
-      : 0;
+    const designSources = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false) : [];
+    const scenarioSources = designSources.filter((source) => sourceActiveInScenario(project, source));
+    const sourceCount = scenarioSources.length;
+    const designSourceCount = designSources.length;
+    const connectedLoad = scenarioSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
+    const designConnectedLoad = designSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
     const headroom = Math.max(0, finiteNumber(project.amplifierHeadroom, 20));
+    const audible = grid.points.filter((point) => Number.isFinite(point.level) && point.level >= point.target).length;
+    const bidding = calculateBiddingEstimate(project, { sourceCount: designSourceCount, connectedLoad: designConnectedLoad });
     return {
       total,
       below,
@@ -636,16 +672,54 @@
       over,
       empty,
       compliantPercent: total ? (compliant / total) * 100 : 0,
-      audiblePercent: total ? ((compliant + over) / total) * 100 : 0,
+      audiblePercent: total ? (audible / total) * 100 : 0,
       overPercent: total ? (over / total) * 100 : 0,
       minimum: levels.length ? levels.reduce((minimum, level) => Math.min(minimum, level), Infinity) : -Infinity,
       maximum: levels.length ? levels.reduce((maximum, level) => Math.max(maximum, level), -Infinity) : -Infinity,
       energeticAverage: average,
       arithmeticAverage,
       sourceCount,
+      designSourceCount,
       connectedLoad,
+      designConnectedLoad,
       amplifierWithHeadroom: connectedLoad * (1 + headroom / 100),
+      bidding,
       actualSpacing: grid.spacing,
+    };
+  }
+
+  function calculateBiddingEstimate(project, basis = {}) {
+    const enabled = Boolean(project && project.biddingModeEnabled);
+    const sourceCount = Math.max(0, Math.floor(finiteNumber(basis.sourceCount, 0)));
+    const connectedLoad = Math.max(0, finiteNumber(basis.connectedLoad, 0));
+    const quantityAllowancePercent = clamp(finiteNumber(project && project.biddingQuantityAllowance, 25), 0, 500);
+    const amplifierHeadroomPercent = clamp(finiteNumber(project && project.biddingAmplifierHeadroom, 25), 0, 500);
+    const looseSparePercent = clamp(finiteNumber(project && project.biddingLooseSparePercent, 5), 0, 500);
+    const acousticReserveDb = enabled ? biddingAcousticReserve(project) : 0;
+    const installedQuantity = enabled && sourceCount
+      ? Math.ceil(sourceCount * (1 + quantityAllowancePercent / 100))
+      : sourceCount;
+    const quantityAllowance = Math.max(0, installedQuantity - sourceCount);
+    const looseSpareQuantity = enabled && installedQuantity
+      ? Math.ceil(installedQuantity * (looseSparePercent / 100))
+      : 0;
+    const loadScale = sourceCount ? installedQuantity / sourceCount : 0;
+    const estimatedConnectedLoad = connectedLoad * loadScale;
+    const amplifierCapacity = estimatedConnectedLoad * (1 + amplifierHeadroomPercent / 100);
+    return {
+      enabled,
+      acousticReserveDb,
+      quantityAllowancePercent,
+      amplifierHeadroomPercent,
+      looseSparePercent,
+      modelledQuantity: sourceCount,
+      quantityAllowance,
+      installedQuantity,
+      looseSpareQuantity,
+      purchaseQuantity: installedQuantity + looseSpareQuantity,
+      modelledConnectedLoad: connectedLoad,
+      estimatedConnectedLoad,
+      amplifierCapacity,
     };
   }
 
@@ -664,6 +738,161 @@
     return [...loops.values()]
       .map((entry) => ({ ...entry, withHeadroom: entry.connectedLoad * (1 + headroom / 100) }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function assignSourcesToCircuits(sources, requestedCapacity = 8) {
+    const items = Array.isArray(sources) ? sources : [];
+    const capacity = Math.max(1, Math.round(finiteNumber(requestedCapacity, 8)));
+    const groupCounts = { A: 0, B: 0 };
+    items.forEach((source, index) => {
+      const redundancyGroup = index % 2 === 0 ? "A" : "B";
+      groupCounts[redundancyGroup] += 1;
+      source.redundancyGroup = redundancyGroup;
+      source.loop = `${redundancyGroup}-C${Math.ceil(groupCounts[redundancyGroup] / capacity)}`;
+    });
+    return items;
+  }
+
+  function summarizeCircuits(project) {
+    const circuits = new Map();
+    const sources = Array.isArray(project.sources) ? project.sources : [];
+    for (const source of sources) {
+      if (source.enabled === false) continue;
+      const group = normalizeRedundancyGroup(source.redundancyGroup);
+      const name = String(source.loop || "Unassigned").trim() || "Unassigned";
+      const key = `${group}::${name}`;
+      if (!circuits.has(key)) circuits.set(key, { key, group, name, count: 0, connectedLoad: 0, scenarioActive: true });
+      const entry = circuits.get(key);
+      entry.count += 1;
+      entry.connectedLoad += Math.max(0, finiteNumber(source.tapPower, 0));
+    }
+    circuits.forEach((entry) => {
+      const groupActive = entry.group === "A" ? project.scenarioGroupAEnabled !== false : project.scenarioGroupBEnabled !== false;
+      entry.scenarioActive = groupActive && String(project.scenarioOutageCircuit || "") !== entry.key;
+    });
+    const headroom = Math.max(0, finiteNumber(project.amplifierHeadroom, 20));
+    return [...circuits.values()]
+      .map((entry) => ({ ...entry, withHeadroom: entry.connectedLoad * (1 + headroom / 100) }))
+      .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+  }
+
+  function calculateAmplifierPlan(project) {
+    const input = project && typeof project === "object" ? project : createProject("paging");
+    const rating = clamp(finiteNumber(input.amplifierUnitRating, 500), 1, 1000000);
+    const maximumLoadingPercent = clamp(finiteNumber(input.amplifierMaxLoadPercent, 80), 1, 100);
+    const usableCapacityPerUnit = rating * maximumLoadingPercent / 100;
+    const standbyPerGroup = clamp(Math.round(finiteNumber(input.amplifierStandbyPerGroup, 1)), 0, 1000);
+    const looseSparePercent = clamp(finiteNumber(input.amplifierLooseSparePercent, 0), 0, 500);
+    const allocationMode = input.amplifierAllocationMode === "pooledByGroup" ? "pooledByGroup" : "perCircuit";
+    const circuits = summarizeCircuits(input);
+    const designSources = Array.isArray(input.sources) ? input.sources.filter((source) => source.enabled !== false) : [];
+    const modelledConnectedLoad = designSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
+    const bidding = calculateBiddingEstimate(input, { sourceCount: designSources.length, connectedLoad: modelledConnectedLoad });
+    const quantityLoadScale = bidding.enabled && bidding.modelledQuantity ? bidding.installedQuantity / bidding.modelledQuantity : 1;
+    const biddingHeadroomFactor = bidding.enabled ? 1 + bidding.amplifierHeadroomPercent / 100 : 1;
+    const loadScale = quantityLoadScale * biddingHeadroomFactor;
+    const circuitBasis = circuits.map((circuit) => ({
+      ...circuit,
+      baseLoad: circuit.connectedLoad,
+      designLoad: circuit.connectedLoad * loadScale,
+    }));
+    let rows;
+    if (allocationMode === "pooledByGroup") {
+      rows = ["A", "B"].map((group) => {
+        const entries = circuitBasis.filter((circuit) => circuit.group === group);
+        const baseLoad = entries.reduce((sum, circuit) => sum + circuit.baseLoad, 0);
+        const designLoad = entries.reduce((sum, circuit) => sum + circuit.designLoad, 0);
+        return {
+          key: `group-${group}`,
+          group,
+          name: `Group ${group} pooled bank`,
+          circuitCount: entries.length,
+          speakerCount: entries.reduce((sum, circuit) => sum + circuit.count, 0),
+          baseLoad,
+          designLoad,
+          onlineQuantity: designLoad > 0 ? Math.ceil(designLoad / usableCapacityPerUnit) : 0,
+          scenarioActive: group === "A" ? input.scenarioGroupAEnabled !== false : input.scenarioGroupBEnabled !== false,
+          requiresCircuitSplit: false,
+        };
+      }).filter((row) => row.circuitCount || row.designLoad);
+    } else {
+      rows = circuitBasis.map((circuit) => {
+        const onlineQuantity = circuit.designLoad > 0 ? Math.ceil(circuit.designLoad / usableCapacityPerUnit) : 0;
+        return {
+          key: circuit.key,
+          group: circuit.group,
+          name: circuit.name,
+          circuitCount: 1,
+          speakerCount: circuit.count,
+          baseLoad: circuit.baseLoad,
+          designLoad: circuit.designLoad,
+          onlineQuantity,
+          scenarioActive: circuit.scenarioActive,
+          requiresCircuitSplit: onlineQuantity > 1,
+        };
+      });
+    }
+    const groups = ["A", "B"].map((group) => {
+      const groupRows = rows.filter((row) => row.group === group);
+      const designLoad = groupRows.reduce((sum, row) => sum + row.designLoad, 0);
+      const baseLoad = groupRows.reduce((sum, row) => sum + row.baseLoad, 0);
+      const onlineQuantity = groupRows.reduce((sum, row) => sum + row.onlineQuantity, 0);
+      const standbyQuantity = onlineQuantity > 0 ? standbyPerGroup : 0;
+      return {
+        group,
+        circuitCount: circuits.filter((circuit) => circuit.group === group).length,
+        speakerCount: circuits.filter((circuit) => circuit.group === group).reduce((sum, circuit) => sum + circuit.count, 0),
+        baseLoad,
+        designLoad,
+        onlineQuantity,
+        standbyQuantity,
+        installedQuantity: onlineQuantity + standbyQuantity,
+      };
+    });
+    const designLoad = rows.reduce((sum, row) => sum + row.designLoad, 0);
+    const scenarioLoad = circuits.filter((circuit) => circuit.scenarioActive).reduce((sum, circuit) => sum + circuit.connectedLoad, 0);
+    const onlineQuantity = groups.reduce((sum, group) => sum + group.onlineQuantity, 0);
+    const standbyQuantity = groups.reduce((sum, group) => sum + group.standbyQuantity, 0);
+    const installedQuantity = onlineQuantity + standbyQuantity;
+    const looseSpareQuantity = installedQuantity > 0 ? Math.ceil(installedQuantity * looseSparePercent / 100) : 0;
+    const purchaseQuantity = installedQuantity + looseSpareQuantity;
+    const onlineNameplateCapacity = onlineQuantity * rating;
+    const usableOnlineCapacity = onlineQuantity * usableCapacityPerUnit;
+    const warnings = [];
+    if (!circuits.length) warnings.push("No active design speakers are assigned.");
+    if (circuits.some((circuit) => circuit.name === "Unassigned")) warnings.push("One or more speakers have no circuit name.");
+    if (rows.some((row) => row.requiresCircuitSplit)) warnings.push("At least one circuit exceeds one amplifier's usable capacity and must be split into approved amplifier channels or redesigned.");
+    return {
+      allocationMode,
+      rating,
+      maximumLoadingPercent,
+      usableCapacityPerUnit,
+      standbyPerGroup,
+      looseSparePercent,
+      biddingApplied: bidding.enabled,
+      quantityLoadScale,
+      biddingHeadroomFactor,
+      loadScale,
+      modelledSpeakerCount: designSources.length,
+      installedSpeakerCount: bidding.installedQuantity,
+      modelledConnectedLoad,
+      designLoad,
+      scenarioLoad,
+      onlineQuantity,
+      standbyQuantity,
+      installedQuantity,
+      looseSpareQuantity,
+      purchaseQuantity,
+      onlineNameplateCapacity,
+      installedNameplateCapacity: installedQuantity * rating,
+      purchaseNameplateCapacity: purchaseQuantity * rating,
+      usableOnlineCapacity,
+      loadingPercent: onlineNameplateCapacity > 0 ? designLoad / onlineNameplateCapacity * 100 : 0,
+      capacityMargin: Math.max(0, usableOnlineCapacity - designLoad),
+      rows,
+      groups,
+      warnings,
+    };
   }
 
   function instantiateDevice(key, overrides = {}) {
@@ -692,8 +921,9 @@
       weighting: preset.weighting,
       confidence: preset.confidence,
       provenance: preset.provenance,
-      outputRequirement: "none",
-      loop: "L1",
+      outputRequirement: preset.outputRequirement || "none",
+      redundancyGroup: normalizeRedundancyGroup(preset.redundancyGroup),
+      loop: preset.loop || "L1",
       enabled: true,
       ...overrides,
     };
@@ -724,6 +954,7 @@
         x,
         y,
         azimuth,
+        redundancyGroup: index % 2 === 0 ? "A" : "B",
         loop: index < 2 ? "L1" : "L2",
       }),
     );
@@ -756,6 +987,20 @@
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
+      amplifierUnitRating: 500,
+      amplifierMaxLoadPercent: 80,
+      amplifierAllocationMode: "perCircuit",
+      amplifierStandbyPerGroup: 1,
+      amplifierLooseSparePercent: 0,
+      biddingModeEnabled: false,
+      biddingAcousticReserve: 3,
+      biddingQuantityAllowance: 25,
+      biddingAmplifierHeadroom: 25,
+      biddingLooseSparePercent: 5,
+      scenarioGroupAEnabled: true,
+      scenarioGroupBEnabled: true,
+      speakersPerCircuit: 8,
+      scenarioOutageCircuit: "",
       autoSpacingX: 12,
       autoSpacingY: 12,
       autoPlacementMethod: "compliance",
@@ -897,6 +1142,7 @@
         source.tapPower = Math.min(Math.max(0.001, finiteNumber(source.tapPower, 0.001)), Math.max(0.001, finiteNumber(source.ratedPower, source.tapPower)));
       }
       if (has("loop")) source.loop = String(edits.loop ?? "").slice(0, 120);
+      if (has("redundancyGroup")) source.redundancyGroup = normalizeRedundancyGroup(edits.redundancyGroup);
       if (has("outputRequirement") && SOURCE_OUTPUT_REQUIREMENTS[edits.outputRequirement]) {
         source.outputRequirement = edits.outputRequirement;
       }
@@ -1026,6 +1272,63 @@
     return (typeof value === "string" ? value : String(fallback ?? "")).slice(0, maximumLength);
   }
 
+  function sanitizeJsonValue(input, depth = 0) {
+    if (input == null || typeof input === "boolean") return input;
+    if (typeof input === "string") return input.slice(0, 10000);
+    if (typeof input === "number") return Number.isFinite(input) ? input : null;
+    if (depth >= 8) return null;
+    if (Array.isArray(input)) {
+      return input
+        .slice(0, 250)
+        .map((value) => sanitizeJsonValue(value, depth + 1))
+        .filter((value) => value !== undefined);
+    }
+    if (typeof input !== "object") return undefined;
+    const output = {};
+    Object.keys(input).slice(0, 250).forEach((key) => {
+      if (["__proto__", "prototype", "constructor"].includes(key)) return;
+      const value = sanitizeJsonValue(input[key], depth + 1);
+      if (value !== undefined) output[safeText(key, "", 160)] = value;
+    });
+    return output;
+  }
+
+  function sanitizeMtoCustomSvgSymbol(input) {
+    const value = input && typeof input === "object" ? input : {};
+    const key = safeText(value.key, "", 200);
+    const name = safeText(value.name, key || "Imported symbol", 240);
+    const dataUrl = safeText(value.dataUrl, "", 500000);
+    if (!key || !/^data:image\/svg\+xml(?:;[^,]*)?,/i.test(dataUrl)) return null;
+    return { key, name, dataUrl };
+  }
+
+  function medianFinite(values) {
+    const ordered = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (!ordered.length) return null;
+    const middle = Math.floor(ordered.length / 2);
+    return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+  }
+
+  function sourceDefaultsFromMtoSession(payload, material) {
+    const takeoffs = Array.isArray(payload && payload.takeoffs) ? payload.takeoffs : [];
+    const matching = takeoffs.filter((takeoff) => takeoff && takeoff.materialId === material.id);
+    const heights = matching.map((takeoff) => {
+      const metadata = takeoff && takeoff.metadata && typeof takeoff.metadata === "object" ? takeoff.metadata : {};
+      const pagaAcoustic = metadata.pagaAcoustic && typeof metadata.pagaAcoustic === "object" ? metadata.pagaAcoustic : {};
+      const designBasis = pagaAcoustic.designBasis && typeof pagaAcoustic.designBasis === "object" ? pagaAcoustic.designBasis : {};
+      const candidate = metadata.mountingHeightM ?? metadata.z ?? designBasis.mountingHeightM;
+      const parsed = Number(candidate);
+      return Number.isFinite(parsed) ? parsed : NaN;
+    });
+    const mountingHeightM = medianFinite(heights);
+    const network = safeText(material && material.network, "", 80).trim();
+    return {
+      mountingHeightM,
+      loop: network ? `PAGA-${network}` : "",
+      placementCount: matching.length,
+    };
+  }
+
   function sanitizeMtoPagaMaterial(input, index = 0) {
     const value = input && typeof input === "object" ? input : {};
     const coverageValue = value.coverage && typeof value.coverage === "object" ? value.coverage : {};
@@ -1041,11 +1344,34 @@
     const ambientNoise = clamp(finiteNumber(coverageValue.ambientNoise, 65), 0, 180);
     const targetMargin = clamp(finiteNumber(coverageValue.targetMargin, 10), 0, 100);
     const targetSpl = clamp(finiteNumber(coverageValue.targetSpl, ambientNoise + targetMargin), 0, 220);
+    const sourceDefaultsValue = value.sourceDefaults && typeof value.sourceDefaults === "object" ? value.sourceDefaults : {};
+    const sourceDefaultHeight = Number(sourceDefaultsValue.mountingHeightM);
+    const mountingHeightM = clamp(
+      finiteNumber(coverageValue.mountingHeightM, Number.isFinite(sourceDefaultHeight) ? sourceDefaultHeight : 3),
+      0,
+      1000
+    );
+    const listenerEarHeightM = clamp(finiteNumber(coverageValue.listenerEarHeightM, 1.5), 0, 1000);
+    const verticalSeparationM = clamp(
+      finiteNumber(coverageValue.verticalSeparationM, Math.abs(mountingHeightM - listenerEarHeightM)),
+      0,
+      1000
+    );
     const radiusM = clamp(
       finiteNumber(coverageValue.radiusM, Math.pow(10, (spl - targetSpl) / (coverageValue.indoorAttenuation ? 10 : 20))),
       0.01,
       100000
     );
+    const planRadiusM = clamp(finiteNumber(coverageValue.planRadiusM, radiusM), 0, 100000);
+    const slantRadiusM = clamp(
+      finiteNumber(coverageValue.slantRadiusM, Math.hypot(planRadiusM, verticalSeparationM)),
+      0,
+      100000
+    );
+    const technicalSpec = sanitizeJsonValue(value.technicalSpec);
+    const network = safeText(value.network, "", 120);
+    const networkColor = safeText(value.networkColor, "", 120);
+    const customSvgSymbol = sanitizeMtoCustomSvgSymbol(value.customSvgSymbol);
     return {
       id: materialId,
       name: safeText(value.name, `Imported PAGA material ${index + 1}`, 240),
@@ -1060,6 +1386,15 @@
       w: clamp(finiteNumber(value.w, 0), 0, 100000),
       T: clamp(finiteNumber(value.T, 1), 0, 1000000),
       symbol: safeText(value.symbol, "speaker", 160) || "speaker",
+      technicalSpec: technicalSpec && typeof technicalSpec === "object" && !Array.isArray(technicalSpec) ? technicalSpec : {},
+      network,
+      networkColor,
+      sourceDefaults: {
+        mountingHeightM,
+        loop: safeText(sourceDefaultsValue.loop, network ? `PAGA-${network}` : "L1", 120) || "L1",
+        placementCount: Math.max(0, Math.round(finiteNumber(sourceDefaultsValue.placementCount, 0))),
+      },
+      customSvgSymbol,
       coverage: {
         type: "paga",
         enabled: coverageValue.enabled !== false,
@@ -1070,16 +1405,16 @@
         targetMargin,
         targetSpl,
         radiusM,
-        planRadiusM: clamp(finiteNumber(coverageValue.planRadiusM, radiusM), 0, 100000),
-        slantRadiusM: clamp(finiteNumber(coverageValue.slantRadiusM, radiusM), 0, 100000),
+        planRadiusM,
+        slantRadiusM,
         indoorAttenuation: Boolean(coverageValue.indoorAttenuation),
         attenuationModel: coverageValue.indoorAttenuation ? "indoor" : "freefield",
         dispersionAngle: clamp(finiteNumber(coverageValue.dispersionAngle, 360), 1, 360),
         verticalDispersionAngle: clamp(finiteNumber(coverageValue.verticalDispersionAngle, 360), 1, 360),
-        mountingHeightM: clamp(finiteNumber(coverageValue.mountingHeightM, 3), 0, 1000),
-        listenerEarHeightM: clamp(finiteNumber(coverageValue.listenerEarHeightM, 1.5), 0, 1000),
-        verticalSeparationM: clamp(finiteNumber(coverageValue.verticalSeparationM, 1.5), 0, 1000),
-        designSpacingM: clamp(finiteNumber(coverageValue.designSpacingM, radiusM * Math.SQRT2), 0, 200000),
+        mountingHeightM,
+        listenerEarHeightM,
+        verticalSeparationM,
+        designSpacingM: clamp(finiteNumber(coverageValue.designSpacingM, planRadiusM * Math.SQRT2), 0, 200000),
         weighting: ["A", "C", "Z"].includes(coverageValue.weighting) ? coverageValue.weighting : "A",
         color: coverageColor,
       },
@@ -1095,10 +1430,31 @@
         : payload.material
           ? [payload.material]
           : [];
+    const customSymbols = new Map();
+    (Array.isArray(payload.customSvgSymbols) ? payload.customSvgSymbols : []).forEach((symbol) => {
+      const sanitized = sanitizeMtoCustomSvgSymbol(symbol);
+      if (sanitized) {
+        customSymbols.set(sanitized.key, sanitized);
+        customSymbols.set(sanitized.name, sanitized);
+      }
+    });
     const seen = new Set();
     return candidates
       .slice(0, 1000)
-      .map((material, index) => sanitizeMtoPagaMaterial(material, index))
+      .map((material, index) => {
+        const sourceDefaults = sourceDefaultsFromMtoSession(payload, material || {});
+        const symbolKey = safeText(material && material.symbol, "", 160);
+        return sanitizeMtoPagaMaterial({
+          ...(material || {}),
+          sourceDefaults: {
+            ...((material && material.sourceDefaults) || {}),
+            ...(sourceDefaults.mountingHeightM == null ? {} : { mountingHeightM: sourceDefaults.mountingHeightM }),
+            ...(sourceDefaults.loop && !(material && material.sourceDefaults && material.sourceDefaults.loop) ? { loop: sourceDefaults.loop } : {}),
+            placementCount: sourceDefaults.placementCount || finiteNumber(material && material.sourceDefaults && material.sourceDefaults.placementCount, 0),
+          },
+          customSvgSymbol: (material && material.customSvgSymbol) || customSymbols.get(symbolKey) || null,
+        }, index);
+      })
       .filter((material) => {
         if (!material || seen.has(material.id)) return false;
         seen.add(material.id);
@@ -1119,15 +1475,19 @@
       referenceDistance: 1,
       referencePower: 1,
       tapPower: coverage.power,
-      ratedPower: coverage.power,
+      ratedPower: Math.max(coverage.power, finiteNumber(sanitized.technicalSpec.nominalPowerW, coverage.power)),
       beamWidth: coverage.dispersionAngle,
       verticalBeamWidth: coverage.verticalDispersionAngle,
       rearAttenuation: 0,
       nearFieldDistance: 1,
-      sourceHeight: coverage.mountingHeightM,
+      sourceHeight: sanitized.sourceDefaults.mountingHeightM,
       weighting: coverage.weighting,
       confidence: "user",
       provenance: `Imported from Telecom MTO Material Configuration: ${sanitized.name} (${sanitized.id}).`,
+      loop: sanitized.sourceDefaults.loop,
+      redundancyGroup: normalizeRedundancyGroup(sanitized.network),
+      materialColor: sanitized.color,
+      network: sanitized.network,
     };
   }
 
@@ -1150,7 +1510,7 @@
       ? finiteNumber(coverage.targetMargin, project.requiredMargin)
       : finiteNumber(project.requiredMargin, 0);
     const targetSpl = coverage
-      ? finiteNumber(coverage.targetSpl, ambientNoise + targetMargin)
+      ? finiteNumber(coverage.targetSpl, ambientNoise + targetMargin) + biddingAcousticReserve(project)
       : maximumProjectTarget(project);
     const indoorAttenuation = Boolean(coverage && coverage.indoorAttenuation);
     const attenuationFactor = indoorAttenuation ? 10 : 20;
@@ -1221,6 +1581,7 @@
       confidence: base.confidence,
       provenance: safeText(value.provenance, base.provenance, 2000),
       outputRequirement: SOURCE_OUTPUT_REQUIREMENTS[value.outputRequirement] ? value.outputRequirement : "none",
+      redundancyGroup: normalizeRedundancyGroup(value.redundancyGroup || base.redundancyGroup),
       loop: safeText(value.loop, base.loop, 120),
       enabled: value.enabled !== false,
     };
@@ -1369,6 +1730,8 @@
     const materials = [];
     const takeoffs = [];
     const hiddenMaterialIds = new Set();
+    const customSvgSymbols = [];
+    const customSvgSymbolKeys = new Set();
     const materialProfileById = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
 
     (project.sources || []).forEach((source, index) => {
@@ -1396,6 +1759,10 @@
       let material = materialBySignature.get(signature);
       if (!material) {
         const materialId = importedMaterial ? importedMaterial.id : `paga-mat-${materials.length + 1}`;
+        if (importedMaterial && importedMaterial.customSvgSymbol && !customSvgSymbolKeys.has(importedMaterial.customSvgSymbol.key)) {
+          customSvgSymbols.push(importedMaterial.customSvgSymbol);
+          customSvgSymbolKeys.add(importedMaterial.customSvgSymbol.key);
+        }
         const modelName = String(source.model || source.name || "PAGA loudspeaker").trim();
         material = {
           ...(importedMaterial || {}),
@@ -1443,6 +1810,8 @@
           pagaSourceOutputRequirement: requirement.key,
           pagaImportedMaterial: Boolean(importedMaterial),
         };
+        delete material.customSvgSymbol;
+        delete material.sourceDefaults;
         materialBySignature.set(signature, material);
         materials.push(material);
         if (source.enabled === false) hiddenMaterialIds.add(materialId);
@@ -1488,9 +1857,12 @@
           ipRating: requirement.key === "outdoorWeatherproof" ? outputClass : "",
           exRating: requirement.key === "outdoorFlameproof" ? outputClass : "",
           datasheetRef: source.provenance || "",
-          remarks: `Imported from Sound Coverage Study; azimuth ${Number(source.azimuth.toFixed(3))} deg; ${outputClass}; ${source.enabled === false ? "excluded from acoustic study" : "included in acoustic study"}.`,
+          remarks: `Imported from Sound Coverage Study; Group ${normalizeRedundancyGroup(source.redundancyGroup)}; circuit ${source.loop || "Unassigned"}; azimuth ${Number(source.azimuth.toFixed(3))} deg; ${outputClass}; ${source.enabled === false ? "excluded from acoustic study" : "included in acoustic study"}.`,
           pagaAcoustic: {
             sourceId: source.id,
+            redundancyGroup: normalizeRedundancyGroup(source.redundancyGroup),
+            circuit: source.loop || "",
+            circuitKey: sourceCircuitKey(source),
             weighting: source.weighting,
             referenceSpl: source.referenceSpl,
             referenceDistance: source.referenceDistance,
@@ -1569,7 +1941,7 @@
       drawingSource,
       drawingSnapshot: null,
       cadReference: null,
-      customSvgSymbols: [],
+      customSvgSymbols,
       wbsZones: [],
       pagaCompatibility: {
         format: "PAGA Sound Coverage + Telecom MTO Project Session",
@@ -1645,6 +2017,20 @@
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
+      amplifierUnitRating: clamp(finiteNumber(input.amplifierUnitRating, fallback.amplifierUnitRating), 1, 1000000),
+      amplifierMaxLoadPercent: clamp(finiteNumber(input.amplifierMaxLoadPercent, fallback.amplifierMaxLoadPercent), 1, 100),
+      amplifierAllocationMode: input.amplifierAllocationMode === "pooledByGroup" ? "pooledByGroup" : "perCircuit",
+      amplifierStandbyPerGroup: clamp(Math.round(finiteNumber(input.amplifierStandbyPerGroup, fallback.amplifierStandbyPerGroup)), 0, 1000),
+      amplifierLooseSparePercent: clamp(finiteNumber(input.amplifierLooseSparePercent, fallback.amplifierLooseSparePercent), 0, 500),
+      biddingModeEnabled: input.biddingModeEnabled == null ? fallback.biddingModeEnabled : Boolean(input.biddingModeEnabled),
+      biddingAcousticReserve: clamp(finiteNumber(input.biddingAcousticReserve, fallback.biddingAcousticReserve), 0, 20),
+      biddingQuantityAllowance: clamp(finiteNumber(input.biddingQuantityAllowance, fallback.biddingQuantityAllowance), 0, 500),
+      biddingAmplifierHeadroom: clamp(finiteNumber(input.biddingAmplifierHeadroom, fallback.biddingAmplifierHeadroom), 0, 500),
+      biddingLooseSparePercent: clamp(finiteNumber(input.biddingLooseSparePercent, fallback.biddingLooseSparePercent), 0, 500),
+      scenarioGroupAEnabled: input.scenarioGroupAEnabled == null ? fallback.scenarioGroupAEnabled : Boolean(input.scenarioGroupAEnabled),
+      scenarioGroupBEnabled: input.scenarioGroupBEnabled == null ? fallback.scenarioGroupBEnabled : Boolean(input.scenarioGroupBEnabled),
+      speakersPerCircuit: clamp(Math.round(finiteNumber(input.speakersPerCircuit, fallback.speakersPerCircuit)), 1, 1000),
+      scenarioOutageCircuit: safeText(input.scenarioOutageCircuit, fallback.scenarioOutageCircuit, 240),
       autoSpacingX: clamp(finiteNumber(input.autoSpacingX, fallback.autoSpacingX), 0.5, 1000),
       autoSpacingY: clamp(finiteNumber(input.autoSpacingY, fallback.autoSpacingY), 0.5, 1000),
       autoPlacementMethod: input.autoPlacementMethod === "manual" ? "manual" : "compliance",
@@ -1694,6 +2080,14 @@
     normalizeAngle,
     smallestAngleDifference,
     energeticSum,
+    biddingAcousticReserve,
+    calculateBiddingEstimate,
+    normalizeRedundancyGroup,
+    sourceCircuitKey,
+    sourceActiveInScenario,
+    assignSourcesToCircuits,
+    summarizeCircuits,
+    calculateAmplifierPlan,
     beamPlaneLoss,
     directivityLoss,
     segmentRectangleInterval,

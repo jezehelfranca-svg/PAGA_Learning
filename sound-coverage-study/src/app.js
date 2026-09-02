@@ -74,6 +74,16 @@
     return Number(value).toFixed(digits);
   }
 
+  function materialDetailText(value) {
+    if (Array.isArray(value)) return value.join(", ");
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .map(([key, item]) => `${key}: ${materialDetailText(item)}`)
+        .join("; ");
+    }
+    return String(value ?? "");
+  }
+
   function roundPlanValue(value) {
     return Number(Number(value).toFixed(3));
   }
@@ -210,6 +220,8 @@
     document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
     document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
     updateAutoPlacementMethodUI();
+    updateBiddingAllowanceDisplay();
+    updateCircuitScenarioDisplay();
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
@@ -220,9 +232,14 @@
     document.getElementById("autoManualFields").hidden = method !== "manual";
     const deviceKey = document.getElementById("devicePresetSelect").value;
     const preset = devicePresetForKey(deviceKey);
-    const baseTarget = Math.max(project.minimumLevel || 0, (project.ambientLevel || 0) + (project.requiredMargin || 0));
+    const baseTarget = Model.targetForNoise(project, project.ambientLevel);
     const designMargin = Number(document.getElementById("autoDesignMargin").value) || 0;
-    document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver at or above its local target plus ${round(designMargin, 1)} dB reserve${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
+    const proposalReserve = Model.biddingAcousticReserve(project);
+    const effectiveReserve = Math.max(designMargin, proposalReserve);
+    const reserveText = project.biddingModeEnabled
+      ? `${round(proposalReserve, 1)} dB proposal reserve is already included in the local target; optimizer reserve is ${round(effectiveReserve, 1)} dB total above the engineering target`
+      : `${round(designMargin, 1)} dB optimizer reserve`;
+    document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver meeting ${escapeHtml(reserveText)}${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Active base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
   }
   function syncToggle(id, active) {
     const button = document.getElementById(id);
@@ -387,6 +404,87 @@
     document.getElementById("xAxisLabel").textContent = `${round(project.width, project.width % 1 ? 1 : 0)} m`;
     document.getElementById("yAxisLabel").textContent = `${round(project.depth, project.depth % 1 ? 1 : 0)} m`;
     updateSourceOutputRequirementDisplay();
+    updateBiddingAllowanceDisplay();
+    updateCircuitScenarioDisplay();
+    updateAmplifierDisplay();
+  }
+
+  function updateCircuitScenarioDisplay() {
+    const selector = document.getElementById("scenarioOutageCircuit");
+    const target = document.getElementById("circuitScenarioSummary");
+    if (!selector || !target) return;
+    const circuits = Model.summarizeCircuits(project);
+    const current = String(project.scenarioOutageCircuit || "");
+    selector.innerHTML = `<option value="">No circuit outage</option>${circuits.map((circuit) => `<option value="${escapeHtml(circuit.key)}">Group ${escapeHtml(circuit.group)} · ${escapeHtml(circuit.name)} (${circuit.count} speaker${circuit.count === 1 ? "" : "s"})</option>`).join("")}`;
+    if (current && circuits.some((circuit) => circuit.key === current)) selector.value = current;
+    else {
+      selector.value = "";
+      if (current) project.scenarioOutageCircuit = "";
+    }
+    const groups = ["A", "B"].map((group) => {
+      const entries = circuits.filter((circuit) => circuit.group === group);
+      const speakers = entries.reduce((sum, circuit) => sum + circuit.count, 0);
+      const operating = group === "A" ? project.scenarioGroupAEnabled !== false : project.scenarioGroupBEnabled !== false;
+      const circuitText = entries.length ? entries.map((circuit) => `${escapeHtml(circuit.name)}: ${circuit.count}`).join(", ") : "none assigned";
+      return `<b>Group ${group}</b> · ${entries.length} circuit${entries.length === 1 ? "" : "s"}, ${speakers} speaker${speakers === 1 ? "" : "s"} · <span class="${operating ? "" : "scenario-off"}">${operating ? "operating" : "switched off"}</span><br><small>${circuitText}</small>`;
+    });
+    const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
+    target.innerHTML = `<span><b>Auto assignment:</b> up to ${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</span><hr>${groups.join("<hr>")}${outage ? `<hr><span class="scenario-off"><b>Outage:</b> Group ${escapeHtml(outage.group)} · ${escapeHtml(outage.name)}</span>` : ""}`;
+  }
+
+  function setWorkspaceView(view) {
+    const showAmplifier = view === "amplifier";
+    document.getElementById("coverageView").hidden = showAmplifier;
+    document.getElementById("amplifierView").hidden = !showAmplifier;
+    const coverageTab = document.getElementById("coverageViewTab");
+    const amplifierTab = document.getElementById("amplifierViewTab");
+    coverageTab.classList.toggle("active", !showAmplifier);
+    amplifierTab.classList.toggle("active", showAmplifier);
+    coverageTab.setAttribute("aria-selected", String(!showAmplifier));
+    amplifierTab.setAttribute("aria-selected", String(showAmplifier));
+    if (showAmplifier) updateAmplifierDisplay();
+    else scheduleCanvasRender();
+  }
+
+  function updateAmplifierDisplay() {
+    const plan = Model.calculateAmplifierPlan(project);
+    const allocationLabel = plan.allocationMode === "perCircuit" ? "Dedicated capacity per circuit" : "Pooled bank per A/B group";
+    document.getElementById("amplifierDesignLoad").textContent = `${round(plan.designLoad, 1)} W`;
+    document.getElementById("amplifierBaseLoad").textContent = plan.biddingApplied
+      ? `${round(plan.modelledConnectedLoad, 1)} W modelled · ${plan.installedSpeakerCount} bid speakers`
+      : `${round(plan.modelledConnectedLoad, 1)} W modelled`;
+    document.getElementById("amplifierOnlineQuantity").textContent = String(plan.onlineQuantity);
+    document.getElementById("amplifierOnlineCapacity").textContent = `${round(plan.onlineNameplateCapacity, 0)} W nameplate`;
+    document.getElementById("amplifierInstalledQuantity").textContent = String(plan.installedQuantity);
+    document.getElementById("amplifierStandbyQuantity").textContent = `${plan.standbyQuantity} standby`;
+    document.getElementById("amplifierPurchaseQuantity").textContent = String(plan.purchaseQuantity);
+    document.getElementById("amplifierLooseSpareQuantity").textContent = `${plan.looseSpareQuantity} loose spare`;
+    document.getElementById("amplifierLoadingChip").textContent = `${round(plan.loadingPercent, 1)}% nameplate load`;
+    document.getElementById("amplifierBasisNote").textContent = `${allocationLabel}. Each ${round(plan.rating, 0)} W unit is limited to ${round(plan.maximumLoadingPercent, 0)}%, giving ${round(plan.usableCapacityPerUnit, 1)} W usable capacity.${plan.biddingApplied ? ` Proposal quantity allowance scales load by ${round(plan.quantityLoadScale, 3)}, then bid amplifier headroom adds ×${round(plan.biddingHeadroomFactor, 3)}; combined sizing factor ×${round(plan.loadScale, 3)}.` : ""}`;
+    document.getElementById("amplifierAllocationTitle").textContent = plan.allocationMode === "perCircuit" ? "Dedicated circuit sizing" : "Pooled A/B bank sizing";
+    document.getElementById("amplifierGroupBody").innerHTML = plan.groups.map((group) => `<tr><td><b>Group ${group.group}</b></td><td>${group.circuitCount}</td><td>${group.speakerCount}</td><td>${round(group.baseLoad, 1)} W</td><td>${round(group.designLoad, 1)} W</td><td>${group.onlineQuantity}</td><td>${group.standbyQuantity}</td><td><b>${group.installedQuantity}</b></td></tr>`).join("") || `<tr><td colspan="8">No speaker circuits are assigned.</td></tr>`;
+    document.getElementById("amplifierAllocationBody").innerHTML = plan.rows.map((row) => {
+      const note = row.requiresCircuitSplit ? "Split circuit / channels required" : plan.allocationMode === "pooledByGroup" ? "Shared group bank" : "Dedicated circuit capacity";
+      return `<tr><td>${escapeHtml(row.group)}</td><td><b>${escapeHtml(row.name)}</b></td><td>${row.circuitCount}</td><td>${row.speakerCount}</td><td>${round(row.designLoad, 1)} W</td><td>${row.onlineQuantity}</td><td><span class="${row.scenarioActive ? "status-pass" : "status-out"}">${row.scenarioActive ? "Operating" : "Out"}</span></td><td>${escapeHtml(note)}</td></tr>`;
+    }).join("") || `<tr><td colspan="8">No amplifier allocation is available.</td></tr>`;
+    const capacityStatement = `<p><b>${round(plan.designLoad, 1)} W design load</b> is allocated to ${plan.onlineQuantity} online × ${round(plan.rating, 0)} W amplifiers. Usable online capacity is ${round(plan.usableOnlineCapacity, 1)} W at the ${round(plan.maximumLoadingPercent, 0)}% loading limit, leaving ${round(plan.capacityMargin, 1)} W margin.</p><p>Current A/B outage scenario leaves ${round(plan.scenarioLoad, 1)} W of modelled speaker load operating. Installed quantity is ${plan.onlineQuantity} online + ${plan.standbyQuantity} standby; purchasing adds ${plan.looseSpareQuantity} loose spare.</p>`;
+    const warningHtml = plan.warnings.map((warning) => `<div class="amplifier-warning">${escapeHtml(warning)}</div>`).join("");
+    document.getElementById("amplifierWarnings").innerHTML = `${capacityStatement}${warningHtml || `<div class="amplifier-pass">Capacity arithmetic passes the configured assumptions. Confirm the selected amplifier model, monitored circuit topology, cable losses, emergency duty, power supply, and authority requirements before issue.</div>`}`;
+  }
+
+  function updateBiddingAllowanceDisplay() {
+    const panel = document.getElementById("biddingAllowanceFields");
+    const target = document.getElementById("biddingAllowanceSummary");
+    if (!panel || !target) return;
+    panel.hidden = !project.biddingModeEnabled;
+    const activeSources = project.sources.filter((source) => source.enabled !== false);
+    const connectedLoad = activeSources.reduce((total, source) => total + Math.max(0, Number(source.tapPower) || 0), 0);
+    const estimate = summary && summary.bidding
+      ? summary.bidding
+      : Model.calculateBiddingEstimate(project, { sourceCount: activeSources.length, connectedLoad });
+    target.innerHTML = project.biddingModeEnabled
+      ? `<b>Current bid estimate:</b> ${estimate.modelledQuantity} modelled + ${estimate.quantityAllowance} allowance = ${estimate.installedQuantity} installed; ${estimate.looseSpareQuantity} loose spare; ${estimate.purchaseQuantity} total purchase. Estimated installed load ${round(estimate.estimatedConnectedLoad, 1)} W; minimum amplifier capacity ${round(estimate.amplifierCapacity, 0)} W.`
+      : "Bidding allowances are off. Engineering quantities and targets are shown without proposal contingency.";
   }
 
   function updateSourceOutputRequirementDisplay() {
@@ -410,17 +508,26 @@
     document.getElementById("splRange").textContent = Number.isFinite(summary.minimum)
       ? `Range ${round(summary.minimum, 1)}–${round(summary.maximum, 1)} ${unit}`
       : "Place a source to calculate";
-    document.getElementById("sourceCount").textContent = String(summary.sourceCount);
-    document.getElementById("connectedLoad").textContent = `${round(summary.connectedLoad, summary.connectedLoad % 1 ? 1 : 0)} W connected · ${round(summary.amplifierWithHeadroom, 0)} W incl. spare`;
+    document.getElementById("sourceCount").textContent = summary.sourceCount === summary.designSourceCount
+      ? String(summary.sourceCount)
+      : `${summary.sourceCount}/${summary.designSourceCount}`;
+    document.getElementById("connectedLoad").textContent = summary.bidding.enabled
+      ? `${summary.sourceCount} scenario active · ${summary.bidding.installedQuantity} bid installed + ${summary.bidding.looseSpareQuantity} loose · ${round(summary.bidding.amplifierCapacity, 0)} W amp`
+      : `${round(summary.connectedLoad, summary.connectedLoad % 1 ? 1 : 0)} W scenario load · ${round(summary.designConnectedLoad, summary.designConnectedLoad % 1 ? 1 : 0)} W design`;
     document.getElementById("overPercent").textContent = project.enforceMaximum ? round(summary.overPercent, 1) : "N/A";
     document.getElementById("gridResolution").textContent = `${grid.points.length.toLocaleString()} samples · ${round(grid.spacing, 2)} m grid`;
-    document.getElementById("mapEmpty").hidden = summary.sourceCount > 0;
+    document.getElementById("mapEmpty").hidden = summary.designSourceCount > 0;
   }
 
   function materialProfileFromKey(key) {
     if (!String(key || "").startsWith("mto:")) return null;
     const materialId = String(key).slice(4);
     return (project.materialProfiles || []).find((material) => material.id === materialId) || null;
+  }
+
+  function materialProfileForSource(source) {
+    if (!source) return null;
+    return (project.materialProfiles || []).find((material) => material.id === source.mtoMaterialId) || null;
   }
 
   function devicePresetForKey(key) {
@@ -437,7 +544,10 @@
       .map((preset) => `<option value="${escapeHtml(preset.key)}">${escapeHtml(preset.name)}</option>`)
       .join("");
     const importedOptions = (project.materialProfiles || [])
-      .map((material) => `<option value="mto:${escapeHtml(material.id)}">MTO · ${escapeHtml(material.name)}</option>`)
+      .map((material) => {
+        const network = material.network ? ` · Network ${escapeHtml(material.network)}` : "";
+        return `<option value="mto:${escapeHtml(material.id)}">MTO${network} · ${escapeHtml(material.name)}</option>`;
+      })
       .join("");
     select.innerHTML = `<optgroup label="Built-in profiles">${builtInOptions}</optgroup>${importedOptions ? `<optgroup label="Imported Telecom MTO materials">${importedOptions}</optgroup>` : ""}`;
     const defaultKey = project.mode === "siren" ? "siren3200" : "horn25";
@@ -458,12 +568,17 @@
         const merged = new Map((project.materialProfiles || []).map((material) => [material.id, material]));
         imported.forEach((material) => merged.set(material.id, material));
         project.materialProfiles = Array.from(merged.values());
+        const allMaterialCount = Array.isArray(payload.materials) ? payload.materials.length : imported.length;
+        const layoutTakeoffCount = Array.isArray(payload.takeoffs) ? payload.takeoffs.length : 0;
         const selectedKey = `mto:${imported[0].id}`;
         populateDevicePresets(selectedKey);
         project.updatedAt = new Date().toISOString();
         debounceSave();
         renderInspector();
-        showToast(`${imported.length} PAGA material${imported.length === 1 ? "" : "s"} imported. Select one from the Device list to place or auto-place.`);
+        const layoutNote = layoutTakeoffCount
+          ? ` Material profiles only; ${layoutTakeoffCount} existing MTO layout placements were not added.`
+          : "";
+        showToast(`${imported.length} PAGA speaker material${imported.length === 1 ? "" : "s"} imported from ${allMaterialCount} total.${layoutNote}`);
       } catch (error) {
         console.error(error);
         showToast("That file is not a valid Telecom MTO Material Configuration or Project Session.");
@@ -834,12 +949,14 @@
   function drawBeams() {
     context.save();
     for (const source of project.sources || []) {
-      if (source.enabled === false) continue;
+      if (!Model.sourceActiveInScenario(project, source)) continue;
       const position = planToCanvas(source.x, source.y);
+      const material = materialProfileForSource(source);
+      const materialColor = material ? material.color : "#0c5356";
       const beam = Model.clamp(Number(source.beamWidth), 1, 360);
       const radius = Math.min(layout.planWidth, layout.planHeight) * 0.26;
-      context.fillStyle = "rgba(12,83,86,0.075)";
-      context.strokeStyle = "rgba(12,83,86,0.27)";
+      context.fillStyle = rgba(materialColor, 0.075);
+      context.strokeStyle = rgba(materialColor, 0.27);
       context.lineWidth = 1;
       if (beam >= 359) {
         context.beginPath();
@@ -866,9 +983,11 @@
       const position = planToCanvas(source.x, source.y);
       const handle = rotationHandlePosition(source);
       const isSelected = selectionHas("source", source.id);
+      const material = materialProfileForSource(source);
+      const materialColor = material ? material.color : source.confidence === "sourced" ? "#0f6669" : "#14575a";
       context.save();
-      context.globalAlpha = source.enabled === false ? 0.42 : 1;
-      context.strokeStyle = isSelected ? "#0f6669" : "rgba(15,102,105,0.72)";
+      context.globalAlpha = Model.sourceActiveInScenario(project, source) ? 1 : 0.32;
+      context.strokeStyle = isSelected ? "#0f6669" : rgba(materialColor, 0.72);
       context.lineWidth = isSelected ? 2 : 1.4;
       context.beginPath();
       context.moveTo(position.x, position.y);
@@ -894,8 +1013,8 @@
       context.save();
       context.translate(position.x, position.y);
       context.rotate(Model.degreesToRadians(source.azimuth));
-      context.globalAlpha = source.enabled === false ? 0.45 : 1;
-      context.fillStyle = source.confidence === "sourced" ? "#0f6669" : "#14575a";
+      context.globalAlpha = Model.sourceActiveInScenario(project, source) ? 1 : 0.35;
+      context.fillStyle = materialColor;
       context.strokeStyle = "white";
       context.lineWidth = 1.5;
       context.beginPath();
@@ -910,9 +1029,9 @@
       context.restore();
       context.beginPath();
       context.arc(position.x, position.y, 2.5, 0, Math.PI * 2);
-      context.fillStyle = source.enabled === false ? "#889694" : "#9ce0c1";
+      context.fillStyle = Model.sourceActiveInScenario(project, source) ? "#9ce0c1" : "#889694";
       context.fill();
-      if (project.showLabels) drawCanvasLabel(source.name, position.x + 10, position.y - 10, "#0b3638");
+      if (project.showLabels) drawCanvasLabel(`${source.name} [${Model.normalizeRedundancyGroup(source.redundancyGroup)} · ${source.loop || "Unassigned"}]`, position.x + 10, position.y - 10, "#0b3638");
     }
     context.restore();
   }
@@ -986,6 +1105,12 @@
     return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}${options}`;
   }
 
+  function redundancyGroupOptions(selectedGroup, { includeUnchanged = false, unchangedLabel = "Leave unchanged" } = {}) {
+    const rawSelection = String(selectedGroup || "").trim();
+    const selected = rawSelection ? Model.normalizeRedundancyGroup(rawSelection) : "";
+    return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}<option value="A" ${selected === "A" ? "selected" : ""}>Group A</option><option value="B" ${selected === "B" ? "selected" : ""}>Group B</option>`;
+  }
+
   function batchNumberField(label, key, options = {}) {
     const { min = 0, max = 10000, step = 0.1, unit = "", placeholder = "Leave unchanged" } = options;
     return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="${escapeHtml(placeholder)}"></label>`;
@@ -1014,6 +1139,8 @@
       placeholder: batchSourcePlaceholder(sources, key, options.unit),
     });
     const loopPlaceholder = batchSourcePlaceholder(sources, "loop");
+    const groupState = commonBatchValue(sources, "redundancyGroup");
+    const groupPlaceholder = groupState.mixed ? "Mixed - leave unchanged" : `Current: Group ${Model.normalizeRedundancyGroup(groupState.value)}`;
     const enabledState = commonBatchValue(sources, "enabled");
     const enabledPlaceholder = enabledState.mixed ? "Mixed - leave unchanged" : enabledState.value === false ? "Current: excluded" : "Current: included";
     const requirementState = commonBatchValue(sources, "outputRequirement");
@@ -1053,11 +1180,12 @@
         <div class="field-grid two">
           ${batchNumber("Rear attenuation", "rearAttenuation", { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${batchNumber("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
+          <label class="field"><span>Redundancy group</span><select data-batch-source-field="redundancyGroup">${redundancyGroupOptions("", { includeUnchanged: true, unchangedLabel: groupPlaceholder })}</select></label>
+          <label class="field"><span>Speaker circuit</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
           <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">${escapeHtml(enabledPlaceholder)}</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
           <label class="field full"><span>Loudspeaker class</span><select data-batch-source-field="outputRequirement">${sourceOutputRequirementOptions("", { includeUnchanged: true, unchangedLabel: requirementPlaceholder })}</select></label>
         </div>
-        <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
+        <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker circuit instead of assigning one</span></label>
         <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
       </form>`;
   }
@@ -1133,6 +1261,34 @@
     const attenuationLabel = designBasis.attenuationModel === "indoor"
       ? "Indoor screening (-3 dB per doubling)"
       : "Free field (-6 dB per doubling)";
+    const importedMaterial = materialProfileForSource(source);
+    const technicalSpec = importedMaterial && importedMaterial.technicalSpec ? importedMaterial.technicalSpec : {};
+    const materialDetailRows = importedMaterial ? [
+      ["Network", importedMaterial.network],
+      ["Network color", importedMaterial.networkColor],
+      ["MTO symbol", importedMaterial.customSvgSymbol ? importedMaterial.customSvgSymbol.name : importedMaterial.symbol],
+      ["Session placements used for defaults", importedMaterial.sourceDefaults && importedMaterial.sourceDefaults.placementCount],
+      ["Imported nominal coverage radius", importedMaterial.coverage && importedMaterial.coverage.radiusM == null ? "" : `${importedMaterial.coverage.radiusM} m`],
+      ["Nominal power", technicalSpec.nominalPowerW == null ? "" : `${technicalSpec.nominalPowerW} W`],
+      ["Selectable taps", Array.isArray(technicalSpec.selectableTapsW) ? `${technicalSpec.selectableTapsW.join(", ")} W` : ""],
+      ["Minimum ingress protection", technicalSpec.minimumIngressProtection],
+      ["Weatherproof minimum output", technicalSpec.weatherproofMinSPLdBA1mAt25W == null ? "" : `${technicalSpec.weatherproofMinSPLdBA1mAt25W} dB(A) @ 1 m / 25 W`],
+      ["Flameproof minimum output", technicalSpec.flameproofMinSPLdBA1mAt25W == null ? "" : `${technicalSpec.flameproofMinSPLdBA1mAt25W} dB(A) @ 1 m / 25 W`],
+      ["Mounting", technicalSpec.mounting],
+      ["Hazardous-area basis", technicalSpec.hazardousArea],
+      ["Bid noise zoning", technicalSpec.bidNoiseZoning],
+      ["Preliminary acoustic basis", technicalSpec.preliminaryAcousticBasis],
+      ["High-noise design note", technicalSpec.highNoiseDesignNote],
+      ["Final design requirement", technicalSpec.finalDesignRequirement],
+    ].filter(([, value]) => value !== "" && value != null && value !== 0) : [];
+    const materialDetailsHtml = materialDetailRows.length ? `
+      <div class="section-kicker">Imported material configuration</div>
+      <dl class="coverage-basis-grid material-detail-grid">
+        ${materialDetailRows.map(([label, value]) => {
+          const wide = String(materialDetailText(value)).length > 64 ? " class=\"wide\"" : "";
+          return `<div${wide}><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(materialDetailText(value))}</dd></div>`;
+        }).join("")}
+      </dl>` : "";
     const coverageBasisHtml = `
       <div class="section-kicker">Coverage design basis</div>
       <dl class="coverage-basis-grid">
@@ -1161,6 +1317,7 @@
           <div class="summary-cell"><span>Confidence</span><strong>${source.confidence === "sourced" ? "Sourced" : source.confidence === "user" ? "User" : "Verify"}</strong></div>
         </div>
         ${coverageBasisHtml}
+        ${materialDetailsHtml}
         <div class="section-kicker">Equipment qualification</div>
         <label class="field full"><span>Loudspeaker class</span><select data-object-field="outputRequirement">${sourceOutputRequirementOptions(source.outputRequirement || "none")}</select></label>
         ${requirementNote}
@@ -1190,7 +1347,8 @@
           ${numberField("Vertical beam width", "verticalBeamWidth", source.verticalBeamWidth ?? 360, { min: 1, max: 360, step: 1, unit: "°" })}
           ${numberField("Rear attenuation", "rearAttenuation", source.rearAttenuation, { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${numberField("Additional loss", "additionalLoss", source.additionalLoss, { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          ${textField("Speaker loop", "loop", source.loop)}
+          <label class="field"><span>Redundancy group</span><select data-object-field="redundancyGroup">${redundancyGroupOptions(source.redundancyGroup)}</select></label>
+          ${textField("Speaker circuit", "loop", source.loop)}
         </div>
         <p class="microcopy">Horizontal and vertical beam widths use the −6 dB convention. A 360° value means no attenuation is modeled in that plane.</p>
         ${enabledField(source.enabled)}
@@ -1268,11 +1426,11 @@
         ${items.map((item) => {
           const active = selectionHas(type, item.id);
           const detail = type === "source"
-            ? `${round(item.tapPower, item.tapPower % 1 ? 1 : 0)} W · ${escapeHtml(item.loop || "Unassigned")}`
+            ? `${round(item.tapPower, item.tapPower % 1 ? 1 : 0)} W · Group ${Model.normalizeRedundancyGroup(item.redundancyGroup)} · ${escapeHtml(item.loop || "Unassigned")}`
             : type === "noise"
               ? `${round(item.level, 1)} ${escapeHtml(decibelUnit())}`
               : `${round(item.height, 1)} m · −${round(item.loss, 1)} dB`;
-          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}" aria-pressed="${active}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false ? "off" : ""}"></i></button>`;
+          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}" aria-pressed="${active}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false || (type === "source" && !Model.sourceActiveInScenario(project, item)) ? "off" : ""}"></i></button>`;
         }).join("")}`)
       .join("");
   }
@@ -1469,17 +1627,40 @@
     debounceSave();
   }
 
+  function autoAssignExistingCircuits() {
+    if (!project.sources.length) {
+      showToast("Place or import speakers before assigning circuits.");
+      return;
+    }
+    if (!window.confirm("Auto-assign every placed speaker alternately to Group A and Group B, replacing current circuit assignments?")) return;
+    Model.assignSourcesToCircuits(project.sources, project.speakersPerCircuit);
+    clearSelection();
+    markChanged();
+    showToast(`${project.sources.length} speakers assigned across ${Model.summarizeCircuits(project).length} A/B circuits.`);
+  }
+
+  function nextRedundancyAssignment() {
+    const sourceNumber = project.sources.length + 1;
+    const redundancyGroup = sourceNumber % 2 === 1 ? "A" : "B";
+    const groupSequence = project.sources.filter((source) => Model.normalizeRedundancyGroup(source.redundancyGroup) === redundancyGroup).length + 1;
+    return {
+      redundancyGroup,
+      loop: `${redundancyGroup}-C${Math.max(1, Math.ceil(groupSequence / Math.max(1, Number(project.speakersPerCircuit) || 8)))}`,
+    };
+  }
+
   function placeAutoPlacementGrid(gridLayout, deviceKey) {
     let lastSource = null;
     const preset = devicePresetForKey(deviceKey);
     gridLayout.points.forEach((point) => {
       const sourceNumber = project.sources.length + 1;
+      const circuitAssignment = nextRedundancyAssignment();
       lastSource = Model.instantiateDevice(preset, {
         name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
         azimuth: 0,
-        loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
+        ...circuitAssignment,
       });
       project.sources.push(lastSource);
     });
@@ -1522,6 +1703,7 @@
       baseAzimuth: 0,
       alternateAzimuth: false,
       includeExisting: project.autoIncludeExisting !== false,
+      speakersPerCircuit: project.speakersPerCircuit,
       maxSources: MAX_AUTO_SOURCES,
     };
     const deviceKey = document.getElementById("devicePresetSelect").value;
@@ -1626,11 +1808,12 @@
   function addAtPoint(type, point) {
     if (type === "source") {
       const key = document.getElementById("devicePresetSelect").value;
+      const circuitAssignment = nextRedundancyAssignment();
       const source = Model.instantiateDevice(devicePresetForKey(key), {
         name: `SRC-${String(project.sources.length + 1).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
-        loop: `L${Math.max(1, Math.ceil((project.sources.length + 1) / 8))}`,
+        ...circuitAssignment,
       });
       project.sources.push(source);
       setSingleSelection({ type: "source", id: source.id });
@@ -2072,8 +2255,12 @@
     const report = document.getElementById("printReport");
     const unit = decibelUnit();
     const criteria = Model.MODE_CRITERIA[project.mode] || Model.MODE_CRITERIA.paging;
-    const loops = Model.summarizeLoops(project);
+    const circuits = Model.summarizeCircuits(project);
+    const bidding = summary.bidding;
+    const amplifierPlan = Model.calculateAmplifierPlan(project);
     const image = canvas.toDataURL("image/png");
+    const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
+    const scenarioText = `Group A ${project.scenarioGroupAEnabled === false ? "OFF" : "ON"}; Group B ${project.scenarioGroupBEnabled === false ? "OFF" : "ON"}; ${outage ? `${outage.group} / ${outage.name} OUT` : "no circuit outage"}`;
     const sourceRows = project.sources.map((source) => {
       const requirement = Model.evaluateSourceOutputRequirement(source, project);
       const requirementStatus = !requirement.applicable
@@ -2081,15 +2268,17 @@
         : !requirement.weightingMatches
           ? `${requirement.projectLabel} - verify weighting: ${round(requirement.ratedOutput, 1)} dB${source.weighting || ""}`
           : `${requirement.projectLabel} - ${requirement.compliant ? "Pass" : "Fail"}: ${round(requirement.ratedOutput, 1)} / ${round(requirement.minimumLevel, 1)} dBA @ 1 m`;
-      return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
+      const active = Model.sourceActiveInScenario(project, source);
+      return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(Model.normalizeRedundancyGroup(source.redundancyGroup))}</td><td>${escapeHtml(source.loop || "Unassigned")}</td><td>${source.enabled === false ? "Excluded" : active ? "Operating" : "Out in scenario"}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
     }).join("");
-    const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
+    const circuitRows = circuits.map((circuit) => `<tr><td>${escapeHtml(circuit.group)}</td><td>${escapeHtml(circuit.name)}</td><td>${circuit.count}</td><td>${round(circuit.connectedLoad, 1)} W</td><td>${circuit.scenarioActive ? "Operating" : "Out"}</td></tr>`).join("");
+    const amplifierPrintRows = amplifierPlan.groups.map((group) => `<tr><td>Group ${escapeHtml(group.group)}</td><td>${group.circuitCount}</td><td>${group.speakerCount}</td><td>${round(group.designLoad, 1)} W</td><td>${group.onlineQuantity}</td><td>${group.standbyQuantity}</td><td>${group.installedQuantity}</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     const projectOutputRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
     const projectOutputRequirementText = `Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m (rated power). Default source class: ${projectOutputRequirement.key === "none" ? "none" : projectOutputRequirement.projectLabel}.`;
     report.innerHTML = `
       <div class="print-cover">
-        <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}</p></div>
+        <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}${bidding.enabled ? " · Proposal bidding mode" : ""}</p></div>
         <dl class="print-meta"><dt>Prepared by</dt><dd>${escapeHtml(project.preparedBy || "—")}</dd><dt>Generated</dt><dd>${new Date().toLocaleString()}</dd><dt>Study size</dt><dd>${round(project.width, 1)} × ${round(project.depth, 1)} m</dd><dt>Weighting</dt><dd>${escapeHtml(unit)}</dd></dl>
       </div>
       <div class="print-summary">
@@ -2097,17 +2286,16 @@
         <div><span>Meets minimum</span><strong>${round(summary.audiblePercent, 1)}%</strong></div>
         <div><span>Average SPL</span><strong>${round(summary.arithmeticAverage, 1)} ${unit}</strong></div>
         <div><span>Range</span><strong>${round(summary.minimum, 1)}–${round(summary.maximum, 1)}</strong></div>
-        <div><span>Connected load</span><strong>${round(summary.connectedLoad, 1)} W</strong></div>
-        <div><span>Sources</span><strong>${summary.sourceCount}</strong></div>
+        <div><span>Scenario / design load</span><strong>${round(summary.connectedLoad, 1)} / ${round(summary.designConnectedLoad, 1)} W</strong></div>
+        <div><span>Scenario / design sources</span><strong>${summary.sourceCount} / ${summary.designSourceCount}</strong></div>
       </div>
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
-        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
-        <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
+        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Redundancy scenario</td><td>${escapeHtml(scenarioText)}</td></tr><tr><td>Auto-assignment circuit capacity</td><td>${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Proposal allowances</td><td>${bidding.enabled ? `Enabled: +${round(bidding.acousticReserveDb, 1)} dB acoustic reserve; ${round(bidding.quantityAllowancePercent, 0)}% installed quantity; ${round(bidding.amplifierHeadroomPercent, 0)}% amplifier headroom; ${round(bidding.looseSparePercent, 0)}% loose spares` : "Disabled"}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
+        <section><h2>A/B speaker circuit summary</h2><table><thead><tr><th>Group</th><th>Circuit</th><th>Speakers</th><th>Connected load</th><th>Scenario</th></tr></thead><tbody>${circuitRows || `<tr><td colspan="5">No active design sources</td></tr>`}</tbody></table><h3>Amplifier sizing</h3><table><thead><tr><th>Bank</th><th>Circuits</th><th>Speakers</th><th>Design load</th><th>Online</th><th>Standby</th><th>Installed</th></tr></thead><tbody>${amplifierPrintRows || `<tr><td colspan="7">No amplifier allocation</td></tr>`}</tbody></table><p class="print-note">${amplifierPlan.allocationMode === "perCircuit" ? "Dedicated capacity per circuit" : "Pooled bank per A/B group"}; ${round(amplifierPlan.rating, 0)} W units at ${round(amplifierPlan.maximumLoadingPercent, 0)}% maximum loading (${round(amplifierPlan.usableCapacityPerUnit, 1)} W usable each)${amplifierPlan.biddingApplied ? `; proposal sizing factor ×${round(amplifierPlan.loadScale, 3)} included` : ""}. Quantity: ${amplifierPlan.onlineQuantity} online + ${amplifierPlan.standbyQuantity} standby + ${amplifierPlan.looseSpareQuantity} loose spare = ${amplifierPlan.purchaseQuantity} purchase.</p>${bidding.enabled ? `<h3>Proposal bid allowance</h3><table><tbody><tr><td>Modelled design sources</td><td>${bidding.modelledQuantity}</td></tr><tr><td>Installed bid quantity</td><td>${bidding.installedQuantity} (${bidding.quantityAllowance} allowance)</td></tr><tr><td>Loose spares / total purchase</td><td>${bidding.looseSpareQuantity} / ${bidding.purchaseQuantity}</td></tr><tr><td>Estimated installed load</td><td>${round(bidding.estimatedConnectedLoad, 1)} W</td></tr><tr><td>Minimum amplifier capacity</td><td>${round(bidding.amplifierCapacity, 0)} W</td></tr></tbody></table>` : ""}${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
-      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="9">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
+      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Group</th><th>Circuit</th><th>Scenario</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="11">No sources</td></tr>`}</tbody></table><h3>Model limitations</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p></section>`;
   }
-
   function bindEvents() {
     document.querySelectorAll("[data-project-field]").forEach((control) => {
       const eventName = control.type === "range" ? "input" : "change";
@@ -2116,6 +2304,12 @@
         if (control.type === "checkbox") project[key] = control.checked;
         else if (control.type === "number" || control.type === "range") project[key] = Number(control.value);
         else project[key] = control.value;
+        if (["amplifierUnitRating", "amplifierMaxLoadPercent", "amplifierAllocationMode", "amplifierStandbyPerGroup", "amplifierLooseSparePercent"].includes(key)) {
+          project.updatedAt = new Date().toISOString();
+          updateAmplifierDisplay();
+          debounceSave();
+          return;
+        }
         if (["width", "depth"].includes(key)) {
           project.sources.forEach((source) => {
             source.x = Model.clamp(source.x, 0, project.width);
@@ -2131,6 +2325,14 @@
           debounceSave();
         });
       }
+    });
+
+    document.getElementById("autoAssignCircuitsButton").addEventListener("click", autoAssignExistingCircuits);
+    document.getElementById("coverageViewTab").addEventListener("click", () => setWorkspaceView("coverage"));
+    document.getElementById("amplifierViewTab").addEventListener("click", () => setWorkspaceView("amplifier"));
+    document.getElementById("printAmplifierButton").addEventListener("click", () => {
+      updatePrintReport();
+      window.setTimeout(() => window.print(), 60);
     });
 
     document.querySelectorAll(".mode-option").forEach((button) => {
