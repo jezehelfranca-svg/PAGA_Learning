@@ -665,6 +665,88 @@ input[type="range"] {
   accent-color: var(--teal-600);
 }
 
+.redundancy-kicker,
+.bidding-kicker {
+  margin-top: 17px;
+}
+
+.redundancy-panel {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(39, 112, 111, 0.22);
+  border-radius: var(--radius-sm);
+  background: #f2f8f6;
+}
+
+.redundancy-switches .check-row {
+  padding: 8px;
+  margin-top: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+}
+
+.circuit-scenario-summary {
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: white;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.circuit-scenario-summary .scenario-off {
+  color: var(--red);
+  font-weight: 750;
+}
+
+.bidding-mode-toggle {
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f8fbf9;
+}
+
+.bidding-mode-toggle span {
+  display: grid;
+  gap: 2px;
+}
+
+.bidding-mode-toggle b {
+  color: var(--ink);
+}
+
+.bidding-mode-toggle small {
+  color: var(--ink-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.bidding-allowance-panel {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  margin-top: 8px;
+  border: 1px solid rgba(200, 121, 40, 0.28);
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+}
+
+.bidding-allowance-panel[hidden] {
+  display: none;
+}
+
+.bidding-allowance-summary {
+  padding: 8px;
+  border-radius: 6px;
+  color: #6b3a10;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .disclosure {
   padding: 0;
 }
@@ -2204,6 +2286,52 @@ kbd {
           </label>
         </div>
         <div class="source-note" id="sourceOutputRequirementNote"></div>
+        <div class="section-kicker redundancy-kicker">Redundancy scenario</div>
+        <div class="redundancy-panel">
+          <div class="field-grid two redundancy-switches">
+            <label class="check-row"><input data-project-field="scenarioGroupAEnabled" type="checkbox"><span>Group A operating</span></label>
+            <label class="check-row"><input data-project-field="scenarioGroupBEnabled" type="checkbox"><span>Group B operating</span></label>
+          </div>
+          <label class="field full">
+            <span>Auto-assign speakers per circuit</span>
+            <input data-project-field="speakersPerCircuit" type="number" min="1" max="1000" step="1">
+          </label>
+          <button class="button secondary" id="autoAssignCircuitsButton" type="button">Auto-assign all placed speakers</button>
+          <p class="microcopy">Auto-assign alternates A/B and overwrites every placed speaker circuit using the capacity above.</p>
+          <label class="field full">
+            <span>Out-of-service circuit</span>
+            <select id="scenarioOutageCircuit" data-project-field="scenarioOutageCircuit"><option value="">No circuit outage</option></select>
+          </label>
+          <div class="circuit-scenario-summary" id="circuitScenarioSummary"></div>
+          <p class="microcopy">Assign every speaker to Group A or B and enter its circuit in the source inspector or batch editor. Auto-placement uses the speaker-per-circuit setting; actual circuit quantities and loads are derived from the placed speakers.</p>
+        </div>
+        <div class="section-kicker bidding-kicker">Proposal estimate</div>
+        <label class="check-row bidding-mode-toggle">
+          <input data-project-field="biddingModeEnabled" type="checkbox">
+          <span><b>Apply bidding allowances</b><small>Add proposal reserve and commercial quantity/load allowances.</small></span>
+        </label>
+        <div class="bidding-allowance-panel" id="biddingAllowanceFields" hidden>
+          <div class="field-grid two">
+            <label class="field">
+              <span>Acoustic reserve <b>dB</b></span>
+              <input data-project-field="biddingAcousticReserve" type="number" min="0" max="20" step="0.5">
+            </label>
+            <label class="field">
+              <span>Installed quantity allowance <b>%</b></span>
+              <input data-project-field="biddingQuantityAllowance" type="number" min="0" max="500" step="5">
+            </label>
+            <label class="field">
+              <span>Bid amplifier headroom <b>%</b></span>
+              <input data-project-field="biddingAmplifierHeadroom" type="number" min="0" max="500" step="5">
+            </label>
+            <label class="field">
+              <span>Loose spare speakers <b>%</b></span>
+              <input data-project-field="biddingLooseSparePercent" type="number" min="0" max="500" step="1">
+            </label>
+          </div>
+          <div class="bidding-allowance-summary" id="biddingAllowanceSummary"></div>
+          <p class="microcopy">The acoustic reserve is added to every project/noise-zone target. Quantity allowance and loose spares affect the proposal schedule only. Amplifier capacity is calculated from the estimated installed load after quantity allowance.</p>
+        </div>
       </section>
 
       <details class="panel-section disclosure">
@@ -2354,7 +2482,7 @@ kbd {
     </div>
     <div class="modal-body guide-layout">
       <section class="method-callout">
-        <div class="method-icon" aria-hidden="true">1-7</div>
+        <div class="method-icon" aria-hidden="true">1-9</div>
         <div>
           <strong>Recommended workflow</strong>
           <p>Set the project basis first, calibrate the plan, define each receiver requirement, then configure and place sources. Check both area compliance and loudspeaker equipment qualification before printing the study.</p>
@@ -2364,6 +2492,8 @@ kbd {
         <li><strong>Set the study basis.</strong><span>Choose paging, public address, or siren. Enter the receiver-plane width, depth, height, and calculation-grid spacing.</span></li>
         <li><strong>Import and calibrate the plan.</strong><span>Load the background, enter its drawing scale and raster DPI, then select <b>Apply scale</b>. Use <b>Measure</b> between two known points to verify the result. Width and depth describe the study area; drawing scale converts the imported image into real metres.</span></li>
         <li><strong>Define receiver requirements.</strong><span>Set project ambient, required margin, coverage floor, and assessment maximum. Add noise zones for areas with different ambient levels; drag their handles to resize them.</span></li>
+        <li><strong>Check A/B redundancy.</strong><span>Assign each speaker to Group A or B and a circuit. Set the auto-assignment speaker capacity per circuit, then switch either group off or select one out-of-service circuit to recalculate coverage. The summary shows the actual circuit count and speakers per circuit.</span></li>
+        <li><strong>Apply proposal allowances when required.</strong><span>Enable <b>Apply bidding allowances</b>. The acoustic reserve raises every receiver target; installed quantity, amplifier headroom, and loose-spare percentages then produce a separate proposal estimate without changing each placed source tap.</span></li>
         <li><strong>Enter each source datum.</strong><span>Select a source and copy an approved datasheet test point into Manufacturer acoustic datum, or use <b>Import materials</b> to load PAGA profiles from a Telecom MTO Material Configuration or Project Session JSON. Imported profiles keep their MTO material IDs, network identity, technical specifications, and available placement-height defaults. This command imports material profiles only; existing MTO takeoff placements are not added to the study. Then set mounting height, aim, class, and verified losses.</span></li>
         <li><strong>Place and aim sources.</strong><span>Place devices individually or use Auto-place and draw an area. Auto-place calculates a screening layout from the active criteria and sets every new source to 0 degrees. Drag the circular handle to rotate a source.</span></li>
         <li><strong>Select and batch edit.</strong><span>Press <b>S</b>, then drag over sources or draw a box on empty space. Drag one selected source to move the group. Use the inspector to change azimuth, power, class, or other shared values, then select <b>Apply changes</b>.</span></li>
@@ -2861,6 +2991,31 @@ kbd {
     );
   }
 
+  function biddingAcousticReserve(project) {
+    return project && project.biddingModeEnabled
+      ? Math.max(0, finiteNumber(project.biddingAcousticReserve, 3))
+      : 0;
+  }
+
+  function normalizeRedundancyGroup(value) {
+    return String(value || "A").trim().toUpperCase() === "B" ? "B" : "A";
+  }
+
+  function sourceCircuitKey(source) {
+    const group = normalizeRedundancyGroup(source && source.redundancyGroup);
+    const circuit = String(source && source.loop || "Unassigned").trim() || "Unassigned";
+    return `${group}::${circuit}`;
+  }
+
+  function sourceActiveInScenario(project, source) {
+    if (!source || source.enabled === false) return false;
+    const group = normalizeRedundancyGroup(source.redundancyGroup);
+    if (group === "A" && project && project.scenarioGroupAEnabled === false) return false;
+    if (group === "B" && project && project.scenarioGroupBEnabled === false) return false;
+    const outageCircuit = String(project && project.scenarioOutageCircuit || "");
+    return !outageCircuit || sourceCircuitKey(source) !== outageCircuit;
+  }
+
   function targetForNoiseZone(project, zone) {
     const ambient = finiteNumber(zone && zone.level, finiteNumber(project.ambientLevel, 0));
     const margin = zone && zone.requiredMargin != null && zone.requiredMargin !== ""
@@ -2869,7 +3024,7 @@ kbd {
     const minimum = zone && zone.minimumLevel != null && zone.minimumLevel !== ""
       ? finiteNumber(zone.minimumLevel, finiteNumber(project.minimumLevel, 0))
       : finiteNumber(project.minimumLevel, 0);
-    return Math.max(minimum, ambient + margin);
+    return Math.max(minimum, ambient + margin) + biddingAcousticReserve(project);
   }
 
   function noiseRequirementAtPoint(project, x, y) {
@@ -2896,11 +3051,11 @@ kbd {
     return Math.max(
       finiteNumber(project.minimumLevel, 0),
       ambient + Math.max(0, finiteNumber(project.requiredMargin, 0)),
-    );
+    ) + biddingAcousticReserve(project);
   }
 
   function calculatePoint(project, x, y) {
-    const sources = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false) : [];
+    const sources = Array.isArray(project.sources) ? project.sources.filter((source) => sourceActiveInScenario(project, source)) : [];
     const levels = sources.map((source) => sourceLevelAtPoint(project, source, x, y));
     const level = energeticSum(levels);
     const requirement = noiseRequirementAtPoint(project, x, y);
@@ -2911,8 +3066,8 @@ kbd {
     const maximum = finiteNumber(project.maximumLevel, Infinity);
     let status = "empty";
     if (Number.isFinite(level)) {
-      if (level < target) status = "below";
-      else if (enforceMaximum && level > maximum) status = "over";
+      if (enforceMaximum && level > maximum) status = "over";
+      else if (level < target) status = "below";
       else status = "compliant";
     }
     return { x, y, level, ambient, target, margin, status };
@@ -2993,19 +3148,25 @@ kbd {
   }
 
   function createPlacementSources(deviceKey, placementGrid, options = {}) {
+    const speakersPerCircuit = Math.max(1, Math.round(finiteNumber(options.speakersPerCircuit, 8)));
     return placementGrid.points.map((point, index) => {
+      const redundancyGroup = index % 2 === 0 ? "A" : "B";
+      const groupSequence = Math.floor(index / 2);
       return instantiateDevice(deviceKey, {
         name: `AUTO-${String(index + 1).padStart(3, "0")}`,
         x: point.x,
         y: point.y,
         azimuth: 0,
-        loop: `AUTO-${Math.max(1, Math.ceil((index + 1) / 8))}`,
+        redundancyGroup,
+        loop: `${redundancyGroup}-C${Math.max(1, Math.ceil((groupSequence + 1) / speakersPerCircuit))}`,
       });
     });
   }
 
   function assessPlacementGrid(project, deviceKey, rectangle, placementGrid, options = {}, sampleSet = null) {
-    const designMargin = clamp(finiteNumber(options.designMargin, 3), 0, 20);
+    const requestedDesignMargin = clamp(finiteNumber(options.designMargin, 3), 0, 20);
+    const proposalReserve = biddingAcousticReserve(project);
+    const designMargin = Math.max(0, requestedDesignMargin - proposalReserve);
     const includeExisting = options.includeExisting !== false;
     const existingSources = includeExisting && Array.isArray(project.sources) ? project.sources : [];
     const proposedSources = createPlacementSources(deviceKey, placementGrid, options);
@@ -3043,7 +3204,8 @@ kbd {
       minimumReserve,
       maximumLevel,
       worstPoint,
-      designMargin,
+      designMargin: Math.max(requestedDesignMargin, proposalReserve),
+      additionalDesignMargin: designMargin,
       sampleSpacing: samples.spacing,
       proposedSources,
     };
@@ -3155,11 +3317,15 @@ kbd {
     const levels = finite.map((point) => point.level);
     const average = levels.length ? energeticSum(levels) - 10 * Math.log10(levels.length) : -Infinity;
     const arithmeticAverage = levels.length ? levels.reduce((sum, level) => sum + level, 0) / levels.length : -Infinity;
-    const sourceCount = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false).length : 0;
-    const connectedLoad = Array.isArray(project.sources)
-      ? project.sources.filter((source) => source.enabled !== false).reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0)
-      : 0;
+    const designSources = Array.isArray(project.sources) ? project.sources.filter((source) => source.enabled !== false) : [];
+    const scenarioSources = designSources.filter((source) => sourceActiveInScenario(project, source));
+    const sourceCount = scenarioSources.length;
+    const designSourceCount = designSources.length;
+    const connectedLoad = scenarioSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
+    const designConnectedLoad = designSources.reduce((sum, source) => sum + Math.max(0, finiteNumber(source.tapPower, 0)), 0);
     const headroom = Math.max(0, finiteNumber(project.amplifierHeadroom, 20));
+    const audible = grid.points.filter((point) => Number.isFinite(point.level) && point.level >= point.target).length;
+    const bidding = calculateBiddingEstimate(project, { sourceCount: designSourceCount, connectedLoad: designConnectedLoad });
     return {
       total,
       below,
@@ -3167,16 +3333,54 @@ kbd {
       over,
       empty,
       compliantPercent: total ? (compliant / total) * 100 : 0,
-      audiblePercent: total ? ((compliant + over) / total) * 100 : 0,
+      audiblePercent: total ? (audible / total) * 100 : 0,
       overPercent: total ? (over / total) * 100 : 0,
       minimum: levels.length ? levels.reduce((minimum, level) => Math.min(minimum, level), Infinity) : -Infinity,
       maximum: levels.length ? levels.reduce((maximum, level) => Math.max(maximum, level), -Infinity) : -Infinity,
       energeticAverage: average,
       arithmeticAverage,
       sourceCount,
+      designSourceCount,
       connectedLoad,
+      designConnectedLoad,
       amplifierWithHeadroom: connectedLoad * (1 + headroom / 100),
+      bidding,
       actualSpacing: grid.spacing,
+    };
+  }
+
+  function calculateBiddingEstimate(project, basis = {}) {
+    const enabled = Boolean(project && project.biddingModeEnabled);
+    const sourceCount = Math.max(0, Math.floor(finiteNumber(basis.sourceCount, 0)));
+    const connectedLoad = Math.max(0, finiteNumber(basis.connectedLoad, 0));
+    const quantityAllowancePercent = clamp(finiteNumber(project && project.biddingQuantityAllowance, 25), 0, 500);
+    const amplifierHeadroomPercent = clamp(finiteNumber(project && project.biddingAmplifierHeadroom, 25), 0, 500);
+    const looseSparePercent = clamp(finiteNumber(project && project.biddingLooseSparePercent, 5), 0, 500);
+    const acousticReserveDb = enabled ? biddingAcousticReserve(project) : 0;
+    const installedQuantity = enabled && sourceCount
+      ? Math.ceil(sourceCount * (1 + quantityAllowancePercent / 100))
+      : sourceCount;
+    const quantityAllowance = Math.max(0, installedQuantity - sourceCount);
+    const looseSpareQuantity = enabled && installedQuantity
+      ? Math.ceil(installedQuantity * (looseSparePercent / 100))
+      : 0;
+    const loadScale = sourceCount ? installedQuantity / sourceCount : 0;
+    const estimatedConnectedLoad = connectedLoad * loadScale;
+    const amplifierCapacity = estimatedConnectedLoad * (1 + amplifierHeadroomPercent / 100);
+    return {
+      enabled,
+      acousticReserveDb,
+      quantityAllowancePercent,
+      amplifierHeadroomPercent,
+      looseSparePercent,
+      modelledQuantity: sourceCount,
+      quantityAllowance,
+      installedQuantity,
+      looseSpareQuantity,
+      purchaseQuantity: installedQuantity + looseSpareQuantity,
+      modelledConnectedLoad: connectedLoad,
+      estimatedConnectedLoad,
+      amplifierCapacity,
     };
   }
 
@@ -3195,6 +3399,42 @@ kbd {
     return [...loops.values()]
       .map((entry) => ({ ...entry, withHeadroom: entry.connectedLoad * (1 + headroom / 100) }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function assignSourcesToCircuits(sources, requestedCapacity = 8) {
+    const items = Array.isArray(sources) ? sources : [];
+    const capacity = Math.max(1, Math.round(finiteNumber(requestedCapacity, 8)));
+    const groupCounts = { A: 0, B: 0 };
+    items.forEach((source, index) => {
+      const redundancyGroup = index % 2 === 0 ? "A" : "B";
+      groupCounts[redundancyGroup] += 1;
+      source.redundancyGroup = redundancyGroup;
+      source.loop = `${redundancyGroup}-C${Math.ceil(groupCounts[redundancyGroup] / capacity)}`;
+    });
+    return items;
+  }
+
+  function summarizeCircuits(project) {
+    const circuits = new Map();
+    const sources = Array.isArray(project.sources) ? project.sources : [];
+    for (const source of sources) {
+      if (source.enabled === false) continue;
+      const group = normalizeRedundancyGroup(source.redundancyGroup);
+      const name = String(source.loop || "Unassigned").trim() || "Unassigned";
+      const key = `${group}::${name}`;
+      if (!circuits.has(key)) circuits.set(key, { key, group, name, count: 0, connectedLoad: 0, scenarioActive: true });
+      const entry = circuits.get(key);
+      entry.count += 1;
+      entry.connectedLoad += Math.max(0, finiteNumber(source.tapPower, 0));
+    }
+    circuits.forEach((entry) => {
+      const groupActive = entry.group === "A" ? project.scenarioGroupAEnabled !== false : project.scenarioGroupBEnabled !== false;
+      entry.scenarioActive = groupActive && String(project.scenarioOutageCircuit || "") !== entry.key;
+    });
+    const headroom = Math.max(0, finiteNumber(project.amplifierHeadroom, 20));
+    return [...circuits.values()]
+      .map((entry) => ({ ...entry, withHeadroom: entry.connectedLoad * (1 + headroom / 100) }))
+      .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
   }
 
   function instantiateDevice(key, overrides = {}) {
@@ -3224,6 +3464,7 @@ kbd {
       confidence: preset.confidence,
       provenance: preset.provenance,
       outputRequirement: preset.outputRequirement || "none",
+      redundancyGroup: normalizeRedundancyGroup(preset.redundancyGroup),
       loop: preset.loop || "L1",
       enabled: true,
       ...overrides,
@@ -3255,6 +3496,7 @@ kbd {
         x,
         y,
         azimuth,
+        redundancyGroup: index % 2 === 0 ? "A" : "B",
         loop: index < 2 ? "L1" : "L2",
       }),
     );
@@ -3287,6 +3529,15 @@ kbd {
       fixedLoss: criteria.fixedLoss,
       airLossPer100m: 0,
       amplifierHeadroom: 20,
+      biddingModeEnabled: false,
+      biddingAcousticReserve: 3,
+      biddingQuantityAllowance: 25,
+      biddingAmplifierHeadroom: 25,
+      biddingLooseSparePercent: 5,
+      scenarioGroupAEnabled: true,
+      scenarioGroupBEnabled: true,
+      speakersPerCircuit: 8,
+      scenarioOutageCircuit: "",
       autoSpacingX: 12,
       autoSpacingY: 12,
       autoPlacementMethod: "compliance",
@@ -3428,6 +3679,7 @@ kbd {
         source.tapPower = Math.min(Math.max(0.001, finiteNumber(source.tapPower, 0.001)), Math.max(0.001, finiteNumber(source.ratedPower, source.tapPower)));
       }
       if (has("loop")) source.loop = String(edits.loop ?? "").slice(0, 120);
+      if (has("redundancyGroup")) source.redundancyGroup = normalizeRedundancyGroup(edits.redundancyGroup);
       if (has("outputRequirement") && SOURCE_OUTPUT_REQUIREMENTS[edits.outputRequirement]) {
         source.outputRequirement = edits.outputRequirement;
       }
@@ -3770,6 +4022,7 @@ kbd {
       confidence: "user",
       provenance: `Imported from Telecom MTO Material Configuration: ${sanitized.name} (${sanitized.id}).`,
       loop: sanitized.sourceDefaults.loop,
+      redundancyGroup: normalizeRedundancyGroup(sanitized.network),
       materialColor: sanitized.color,
       network: sanitized.network,
     };
@@ -3794,7 +4047,7 @@ kbd {
       ? finiteNumber(coverage.targetMargin, project.requiredMargin)
       : finiteNumber(project.requiredMargin, 0);
     const targetSpl = coverage
-      ? finiteNumber(coverage.targetSpl, ambientNoise + targetMargin)
+      ? finiteNumber(coverage.targetSpl, ambientNoise + targetMargin) + biddingAcousticReserve(project)
       : maximumProjectTarget(project);
     const indoorAttenuation = Boolean(coverage && coverage.indoorAttenuation);
     const attenuationFactor = indoorAttenuation ? 10 : 20;
@@ -3865,6 +4118,7 @@ kbd {
       confidence: base.confidence,
       provenance: safeText(value.provenance, base.provenance, 2000),
       outputRequirement: SOURCE_OUTPUT_REQUIREMENTS[value.outputRequirement] ? value.outputRequirement : "none",
+      redundancyGroup: normalizeRedundancyGroup(value.redundancyGroup || base.redundancyGroup),
       loop: safeText(value.loop, base.loop, 120),
       enabled: value.enabled !== false,
     };
@@ -4140,9 +4394,12 @@ kbd {
           ipRating: requirement.key === "outdoorWeatherproof" ? outputClass : "",
           exRating: requirement.key === "outdoorFlameproof" ? outputClass : "",
           datasheetRef: source.provenance || "",
-          remarks: `Imported from Sound Coverage Study; azimuth ${Number(source.azimuth.toFixed(3))} deg; ${outputClass}; ${source.enabled === false ? "excluded from acoustic study" : "included in acoustic study"}.`,
+          remarks: `Imported from Sound Coverage Study; Group ${normalizeRedundancyGroup(source.redundancyGroup)}; circuit ${source.loop || "Unassigned"}; azimuth ${Number(source.azimuth.toFixed(3))} deg; ${outputClass}; ${source.enabled === false ? "excluded from acoustic study" : "included in acoustic study"}.`,
           pagaAcoustic: {
             sourceId: source.id,
+            redundancyGroup: normalizeRedundancyGroup(source.redundancyGroup),
+            circuit: source.loop || "",
+            circuitKey: sourceCircuitKey(source),
             weighting: source.weighting,
             referenceSpl: source.referenceSpl,
             referenceDistance: source.referenceDistance,
@@ -4297,6 +4554,15 @@ kbd {
       fixedLoss: legacyDefaultLoss ? 0 : clamp(finiteNumber(input.fixedLoss, fallback.fixedLoss), 0, 100),
       airLossPer100m: clamp(finiteNumber(input.airLossPer100m, fallback.airLossPer100m), 0, 100),
       amplifierHeadroom: clamp(finiteNumber(input.amplifierHeadroom, fallback.amplifierHeadroom), 0, 500),
+      biddingModeEnabled: input.biddingModeEnabled == null ? fallback.biddingModeEnabled : Boolean(input.biddingModeEnabled),
+      biddingAcousticReserve: clamp(finiteNumber(input.biddingAcousticReserve, fallback.biddingAcousticReserve), 0, 20),
+      biddingQuantityAllowance: clamp(finiteNumber(input.biddingQuantityAllowance, fallback.biddingQuantityAllowance), 0, 500),
+      biddingAmplifierHeadroom: clamp(finiteNumber(input.biddingAmplifierHeadroom, fallback.biddingAmplifierHeadroom), 0, 500),
+      biddingLooseSparePercent: clamp(finiteNumber(input.biddingLooseSparePercent, fallback.biddingLooseSparePercent), 0, 500),
+      scenarioGroupAEnabled: input.scenarioGroupAEnabled == null ? fallback.scenarioGroupAEnabled : Boolean(input.scenarioGroupAEnabled),
+      scenarioGroupBEnabled: input.scenarioGroupBEnabled == null ? fallback.scenarioGroupBEnabled : Boolean(input.scenarioGroupBEnabled),
+      speakersPerCircuit: clamp(Math.round(finiteNumber(input.speakersPerCircuit, fallback.speakersPerCircuit)), 1, 1000),
+      scenarioOutageCircuit: safeText(input.scenarioOutageCircuit, fallback.scenarioOutageCircuit, 240),
       autoSpacingX: clamp(finiteNumber(input.autoSpacingX, fallback.autoSpacingX), 0.5, 1000),
       autoSpacingY: clamp(finiteNumber(input.autoSpacingY, fallback.autoSpacingY), 0.5, 1000),
       autoPlacementMethod: input.autoPlacementMethod === "manual" ? "manual" : "compliance",
@@ -4346,6 +4612,13 @@ kbd {
     normalizeAngle,
     smallestAngleDifference,
     energeticSum,
+    biddingAcousticReserve,
+    calculateBiddingEstimate,
+    normalizeRedundancyGroup,
+    sourceCircuitKey,
+    sourceActiveInScenario,
+    assignSourcesToCircuits,
+    summarizeCircuits,
     beamPlaneLoss,
     directivityLoss,
     segmentRectangleInterval,
@@ -4589,6 +4862,8 @@ kbd {
       else control.value = project[key] ?? "";
     });
 
+    document.getElementById("autoAssignCircuitsButton").addEventListener("click", autoAssignExistingCircuits);
+
     document.querySelectorAll(".mode-option").forEach((button) => {
       const active = button.dataset.mode === project.mode;
       button.classList.toggle("active", active);
@@ -4609,6 +4884,8 @@ kbd {
     document.getElementById("autoDesignMargin").value = project.autoDesignMargin ?? 3;
     document.getElementById("autoIncludeExisting").checked = project.autoIncludeExisting !== false;
     updateAutoPlacementMethodUI();
+    updateBiddingAllowanceDisplay();
+    updateCircuitScenarioDisplay();
     updatePlanCalibrationUI();
     loadBackgroundImage();
   }
@@ -4619,9 +4896,14 @@ kbd {
     document.getElementById("autoManualFields").hidden = method !== "manual";
     const deviceKey = document.getElementById("devicePresetSelect").value;
     const preset = devicePresetForKey(deviceKey);
-    const baseTarget = Math.max(project.minimumLevel || 0, (project.ambientLevel || 0) + (project.requiredMargin || 0));
+    const baseTarget = Model.targetForNoise(project, project.ambientLevel);
     const designMargin = Number(document.getElementById("autoDesignMargin").value) || 0;
-    document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver at or above its local target plus ${round(designMargin, 1)} dB reserve${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
+    const proposalReserve = Model.biddingAcousticReserve(project);
+    const effectiveReserve = Math.max(designMargin, proposalReserve);
+    const reserveText = project.biddingModeEnabled
+      ? `${round(proposalReserve, 1)} dB proposal reserve is already included in the local target; optimizer reserve is ${round(effectiveReserve, 1)} dB total above the engineering target`
+      : `${round(designMargin, 1)} dB optimizer reserve`;
+    document.getElementById("autoScientificSummary").innerHTML = `<b>Scientific spacing basis</b> The optimizer seeks the sparsest centered grid with every sampled receiver meeting ${escapeHtml(reserveText)}${project.enforceMaximum ? ` and at or below ${round(project.maximumLevel, 1)} ${escapeHtml(decibelUnit())}` : ""}. Active base target: ${round(baseTarget, 1)} ${escapeHtml(decibelUnit())}; selected profile: ${escapeHtml(preset.name)}.`;
   }
   function syncToggle(id, active) {
     const button = document.getElementById(id);
@@ -4786,6 +5068,46 @@ kbd {
     document.getElementById("xAxisLabel").textContent = `${round(project.width, project.width % 1 ? 1 : 0)} m`;
     document.getElementById("yAxisLabel").textContent = `${round(project.depth, project.depth % 1 ? 1 : 0)} m`;
     updateSourceOutputRequirementDisplay();
+    updateBiddingAllowanceDisplay();
+    updateCircuitScenarioDisplay();
+  }
+
+  function updateCircuitScenarioDisplay() {
+    const selector = document.getElementById("scenarioOutageCircuit");
+    const target = document.getElementById("circuitScenarioSummary");
+    if (!selector || !target) return;
+    const circuits = Model.summarizeCircuits(project);
+    const current = String(project.scenarioOutageCircuit || "");
+    selector.innerHTML = `<option value="">No circuit outage</option>${circuits.map((circuit) => `<option value="${escapeHtml(circuit.key)}">Group ${escapeHtml(circuit.group)} · ${escapeHtml(circuit.name)} (${circuit.count} speaker${circuit.count === 1 ? "" : "s"})</option>`).join("")}`;
+    if (current && circuits.some((circuit) => circuit.key === current)) selector.value = current;
+    else {
+      selector.value = "";
+      if (current) project.scenarioOutageCircuit = "";
+    }
+    const groups = ["A", "B"].map((group) => {
+      const entries = circuits.filter((circuit) => circuit.group === group);
+      const speakers = entries.reduce((sum, circuit) => sum + circuit.count, 0);
+      const operating = group === "A" ? project.scenarioGroupAEnabled !== false : project.scenarioGroupBEnabled !== false;
+      const circuitText = entries.length ? entries.map((circuit) => `${escapeHtml(circuit.name)}: ${circuit.count}`).join(", ") : "none assigned";
+      return `<b>Group ${group}</b> · ${entries.length} circuit${entries.length === 1 ? "" : "s"}, ${speakers} speaker${speakers === 1 ? "" : "s"} · <span class="${operating ? "" : "scenario-off"}">${operating ? "operating" : "switched off"}</span><br><small>${circuitText}</small>`;
+    });
+    const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
+    target.innerHTML = `<span><b>Auto assignment:</b> up to ${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</span><hr>${groups.join("<hr>")}${outage ? `<hr><span class="scenario-off"><b>Outage:</b> Group ${escapeHtml(outage.group)} · ${escapeHtml(outage.name)}</span>` : ""}`;
+  }
+
+  function updateBiddingAllowanceDisplay() {
+    const panel = document.getElementById("biddingAllowanceFields");
+    const target = document.getElementById("biddingAllowanceSummary");
+    if (!panel || !target) return;
+    panel.hidden = !project.biddingModeEnabled;
+    const activeSources = project.sources.filter((source) => source.enabled !== false);
+    const connectedLoad = activeSources.reduce((total, source) => total + Math.max(0, Number(source.tapPower) || 0), 0);
+    const estimate = summary && summary.bidding
+      ? summary.bidding
+      : Model.calculateBiddingEstimate(project, { sourceCount: activeSources.length, connectedLoad });
+    target.innerHTML = project.biddingModeEnabled
+      ? `<b>Current bid estimate:</b> ${estimate.modelledQuantity} modelled + ${estimate.quantityAllowance} allowance = ${estimate.installedQuantity} installed; ${estimate.looseSpareQuantity} loose spare; ${estimate.purchaseQuantity} total purchase. Estimated installed load ${round(estimate.estimatedConnectedLoad, 1)} W; minimum amplifier capacity ${round(estimate.amplifierCapacity, 0)} W.`
+      : "Bidding allowances are off. Engineering quantities and targets are shown without proposal contingency.";
   }
 
   function updateSourceOutputRequirementDisplay() {
@@ -4809,11 +5131,15 @@ kbd {
     document.getElementById("splRange").textContent = Number.isFinite(summary.minimum)
       ? `Range ${round(summary.minimum, 1)}–${round(summary.maximum, 1)} ${unit}`
       : "Place a source to calculate";
-    document.getElementById("sourceCount").textContent = String(summary.sourceCount);
-    document.getElementById("connectedLoad").textContent = `${round(summary.connectedLoad, summary.connectedLoad % 1 ? 1 : 0)} W connected · ${round(summary.amplifierWithHeadroom, 0)} W incl. spare`;
+    document.getElementById("sourceCount").textContent = summary.sourceCount === summary.designSourceCount
+      ? String(summary.sourceCount)
+      : `${summary.sourceCount}/${summary.designSourceCount}`;
+    document.getElementById("connectedLoad").textContent = summary.bidding.enabled
+      ? `${summary.sourceCount} scenario active · ${summary.bidding.installedQuantity} bid installed + ${summary.bidding.looseSpareQuantity} loose · ${round(summary.bidding.amplifierCapacity, 0)} W amp`
+      : `${round(summary.connectedLoad, summary.connectedLoad % 1 ? 1 : 0)} W scenario load · ${round(summary.designConnectedLoad, summary.designConnectedLoad % 1 ? 1 : 0)} W design`;
     document.getElementById("overPercent").textContent = project.enforceMaximum ? round(summary.overPercent, 1) : "N/A";
     document.getElementById("gridResolution").textContent = `${grid.points.length.toLocaleString()} samples · ${round(grid.spacing, 2)} m grid`;
-    document.getElementById("mapEmpty").hidden = summary.sourceCount > 0;
+    document.getElementById("mapEmpty").hidden = summary.designSourceCount > 0;
   }
 
   function materialProfileFromKey(key) {
@@ -5246,7 +5572,7 @@ kbd {
   function drawBeams() {
     context.save();
     for (const source of project.sources || []) {
-      if (source.enabled === false) continue;
+      if (!Model.sourceActiveInScenario(project, source)) continue;
       const position = planToCanvas(source.x, source.y);
       const material = materialProfileForSource(source);
       const materialColor = material ? material.color : "#0c5356";
@@ -5283,7 +5609,7 @@ kbd {
       const material = materialProfileForSource(source);
       const materialColor = material ? material.color : source.confidence === "sourced" ? "#0f6669" : "#14575a";
       context.save();
-      context.globalAlpha = source.enabled === false ? 0.42 : 1;
+      context.globalAlpha = Model.sourceActiveInScenario(project, source) ? 1 : 0.32;
       context.strokeStyle = isSelected ? "#0f6669" : rgba(materialColor, 0.72);
       context.lineWidth = isSelected ? 2 : 1.4;
       context.beginPath();
@@ -5310,7 +5636,7 @@ kbd {
       context.save();
       context.translate(position.x, position.y);
       context.rotate(Model.degreesToRadians(source.azimuth));
-      context.globalAlpha = source.enabled === false ? 0.45 : 1;
+      context.globalAlpha = Model.sourceActiveInScenario(project, source) ? 1 : 0.35;
       context.fillStyle = materialColor;
       context.strokeStyle = "white";
       context.lineWidth = 1.5;
@@ -5326,9 +5652,9 @@ kbd {
       context.restore();
       context.beginPath();
       context.arc(position.x, position.y, 2.5, 0, Math.PI * 2);
-      context.fillStyle = source.enabled === false ? "#889694" : "#9ce0c1";
+      context.fillStyle = Model.sourceActiveInScenario(project, source) ? "#9ce0c1" : "#889694";
       context.fill();
-      if (project.showLabels) drawCanvasLabel(source.name, position.x + 10, position.y - 10, "#0b3638");
+      if (project.showLabels) drawCanvasLabel(`${source.name} [${Model.normalizeRedundancyGroup(source.redundancyGroup)} · ${source.loop || "Unassigned"}]`, position.x + 10, position.y - 10, "#0b3638");
     }
     context.restore();
   }
@@ -5402,6 +5728,12 @@ kbd {
     return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}${options}`;
   }
 
+  function redundancyGroupOptions(selectedGroup, { includeUnchanged = false, unchangedLabel = "Leave unchanged" } = {}) {
+    const rawSelection = String(selectedGroup || "").trim();
+    const selected = rawSelection ? Model.normalizeRedundancyGroup(rawSelection) : "";
+    return `${includeUnchanged ? `<option value="">${escapeHtml(unchangedLabel)}</option>` : ""}<option value="A" ${selected === "A" ? "selected" : ""}>Group A</option><option value="B" ${selected === "B" ? "selected" : ""}>Group B</option>`;
+  }
+
   function batchNumberField(label, key, options = {}) {
     const { min = 0, max = 10000, step = 0.1, unit = "", placeholder = "Leave unchanged" } = options;
     return `<label class="field"><span>${escapeHtml(label)}${unit ? ` <b>${escapeHtml(unit)}</b>` : ""}</span><input data-batch-source-field="${escapeHtml(key)}" type="number" min="${min}" max="${max}" step="${step}" placeholder="${escapeHtml(placeholder)}"></label>`;
@@ -5430,6 +5762,8 @@ kbd {
       placeholder: batchSourcePlaceholder(sources, key, options.unit),
     });
     const loopPlaceholder = batchSourcePlaceholder(sources, "loop");
+    const groupState = commonBatchValue(sources, "redundancyGroup");
+    const groupPlaceholder = groupState.mixed ? "Mixed - leave unchanged" : `Current: Group ${Model.normalizeRedundancyGroup(groupState.value)}`;
     const enabledState = commonBatchValue(sources, "enabled");
     const enabledPlaceholder = enabledState.mixed ? "Mixed - leave unchanged" : enabledState.value === false ? "Current: excluded" : "Current: included";
     const requirementState = commonBatchValue(sources, "outputRequirement");
@@ -5469,11 +5803,12 @@ kbd {
         <div class="field-grid two">
           ${batchNumber("Rear attenuation", "rearAttenuation", { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${batchNumber("Additional loss", "additionalLoss", { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          <label class="field"><span>Speaker loop</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
+          <label class="field"><span>Redundancy group</span><select data-batch-source-field="redundancyGroup">${redundancyGroupOptions("", { includeUnchanged: true, unchangedLabel: groupPlaceholder })}</select></label>
+          <label class="field"><span>Speaker circuit</span><input data-batch-source-field="loop" type="text" maxlength="120" placeholder="${escapeHtml(loopPlaceholder)}"></label>
           <label class="field"><span>Study status</span><select data-batch-source-field="enabled"><option value="">${escapeHtml(enabledPlaceholder)}</option><option value="true">Include all</option><option value="false">Exclude all</option></select></label>
           <label class="field full"><span>Loudspeaker class</span><select data-batch-source-field="outputRequirement">${sourceOutputRequirementOptions("", { includeUnchanged: true, unchangedLabel: requirementPlaceholder })}</select></label>
         </div>
-        <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker loop instead of assigning one</span></label>
+        <label class="check-row batch-clear-loop"><input data-batch-clear-loop type="checkbox"><span>Clear speaker circuit instead of assigning one</span></label>
         <div class="inspector-actions"><button class="button primary" type="button" data-object-action="apply-source-batch">Apply changes to ${count}</button></div>
       </form>`;
   }
@@ -5635,7 +5970,8 @@ kbd {
           ${numberField("Vertical beam width", "verticalBeamWidth", source.verticalBeamWidth ?? 360, { min: 1, max: 360, step: 1, unit: "°" })}
           ${numberField("Rear attenuation", "rearAttenuation", source.rearAttenuation, { min: 0, max: 100, step: 0.5, unit: "dB" })}
           ${numberField("Additional loss", "additionalLoss", source.additionalLoss, { min: 0, max: 100, step: 0.5, unit: "dB" })}
-          ${textField("Speaker loop", "loop", source.loop)}
+          <label class="field"><span>Redundancy group</span><select data-object-field="redundancyGroup">${redundancyGroupOptions(source.redundancyGroup)}</select></label>
+          ${textField("Speaker circuit", "loop", source.loop)}
         </div>
         <p class="microcopy">Horizontal and vertical beam widths use the −6 dB convention. A 360° value means no attenuation is modeled in that plane.</p>
         ${enabledField(source.enabled)}
@@ -5713,11 +6049,11 @@ kbd {
         ${items.map((item) => {
           const active = selectionHas(type, item.id);
           const detail = type === "source"
-            ? `${round(item.tapPower, item.tapPower % 1 ? 1 : 0)} W · ${escapeHtml(item.loop || "Unassigned")}`
+            ? `${round(item.tapPower, item.tapPower % 1 ? 1 : 0)} W · Group ${Model.normalizeRedundancyGroup(item.redundancyGroup)} · ${escapeHtml(item.loop || "Unassigned")}`
             : type === "noise"
               ? `${round(item.level, 1)} ${escapeHtml(decibelUnit())}`
               : `${round(item.height, 1)} m · −${round(item.loss, 1)} dB`;
-          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}" aria-pressed="${active}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false ? "off" : ""}"></i></button>`;
+          return `<button class="object-row ${active ? "selected" : ""}" type="button" data-object-type="${type}" data-object-id="${escapeHtml(item.id)}" aria-pressed="${active}"><span class="object-icon">${type === "source" ? "⌁" : type === "noise" ? "N" : "▰"}</span><span class="object-name"><b>${escapeHtml(item.name)}</b><small>${detail}</small></span><i class="object-status ${item.enabled === false || (type === "source" && !Model.sourceActiveInScenario(project, item)) ? "off" : ""}"></i></button>`;
         }).join("")}`)
       .join("");
   }
@@ -5914,17 +6250,40 @@ kbd {
     debounceSave();
   }
 
+  function autoAssignExistingCircuits() {
+    if (!project.sources.length) {
+      showToast("Place or import speakers before assigning circuits.");
+      return;
+    }
+    if (!window.confirm("Auto-assign every placed speaker alternately to Group A and Group B, replacing current circuit assignments?")) return;
+    Model.assignSourcesToCircuits(project.sources, project.speakersPerCircuit);
+    clearSelection();
+    markChanged();
+    showToast(`${project.sources.length} speakers assigned across ${Model.summarizeCircuits(project).length} A/B circuits.`);
+  }
+
+  function nextRedundancyAssignment() {
+    const sourceNumber = project.sources.length + 1;
+    const redundancyGroup = sourceNumber % 2 === 1 ? "A" : "B";
+    const groupSequence = project.sources.filter((source) => Model.normalizeRedundancyGroup(source.redundancyGroup) === redundancyGroup).length + 1;
+    return {
+      redundancyGroup,
+      loop: `${redundancyGroup}-C${Math.max(1, Math.ceil(groupSequence / Math.max(1, Number(project.speakersPerCircuit) || 8)))}`,
+    };
+  }
+
   function placeAutoPlacementGrid(gridLayout, deviceKey) {
     let lastSource = null;
     const preset = devicePresetForKey(deviceKey);
     gridLayout.points.forEach((point) => {
       const sourceNumber = project.sources.length + 1;
+      const circuitAssignment = nextRedundancyAssignment();
       lastSource = Model.instantiateDevice(preset, {
         name: `SRC-${String(sourceNumber).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
         azimuth: 0,
-        loop: `L${Math.max(1, Math.ceil(sourceNumber / 8))}`,
+        ...circuitAssignment,
       });
       project.sources.push(lastSource);
     });
@@ -5967,6 +6326,7 @@ kbd {
       baseAzimuth: 0,
       alternateAzimuth: false,
       includeExisting: project.autoIncludeExisting !== false,
+      speakersPerCircuit: project.speakersPerCircuit,
       maxSources: MAX_AUTO_SOURCES,
     };
     const deviceKey = document.getElementById("devicePresetSelect").value;
@@ -6071,11 +6431,12 @@ kbd {
   function addAtPoint(type, point) {
     if (type === "source") {
       const key = document.getElementById("devicePresetSelect").value;
+      const circuitAssignment = nextRedundancyAssignment();
       const source = Model.instantiateDevice(devicePresetForKey(key), {
         name: `SRC-${String(project.sources.length + 1).padStart(2, "0")}`,
         x: point.x,
         y: point.y,
-        loop: `L${Math.max(1, Math.ceil((project.sources.length + 1) / 8))}`,
+        ...circuitAssignment,
       });
       project.sources.push(source);
       setSingleSelection({ type: "source", id: source.id });
@@ -6517,8 +6878,11 @@ kbd {
     const report = document.getElementById("printReport");
     const unit = decibelUnit();
     const criteria = Model.MODE_CRITERIA[project.mode] || Model.MODE_CRITERIA.paging;
-    const loops = Model.summarizeLoops(project);
+    const circuits = Model.summarizeCircuits(project);
+    const bidding = summary.bidding;
     const image = canvas.toDataURL("image/png");
+    const outage = circuits.find((circuit) => circuit.key === project.scenarioOutageCircuit);
+    const scenarioText = `Group A ${project.scenarioGroupAEnabled === false ? "OFF" : "ON"}; Group B ${project.scenarioGroupBEnabled === false ? "OFF" : "ON"}; ${outage ? `${outage.group} / ${outage.name} OUT` : "no circuit outage"}`;
     const sourceRows = project.sources.map((source) => {
       const requirement = Model.evaluateSourceOutputRequirement(source, project);
       const requirementStatus = !requirement.applicable
@@ -6526,15 +6890,16 @@ kbd {
         : !requirement.weightingMatches
           ? `${requirement.projectLabel} - verify weighting: ${round(requirement.ratedOutput, 1)} dB${source.weighting || ""}`
           : `${requirement.projectLabel} - ${requirement.compliant ? "Pass" : "Fail"}: ${round(requirement.ratedOutput, 1)} / ${round(requirement.minimumLevel, 1)} dBA @ 1 m`;
-      return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(source.loop || "—")}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
+      const active = Model.sourceActiveInScenario(project, source);
+      return `<tr><td>${escapeHtml(source.name)}</td><td>${escapeHtml(source.model)}</td><td>${round(source.x, 1)}, ${round(source.y, 1)}</td><td>${round(source.z, 1)}</td><td>${round(source.azimuth, 0)}° / ${round(source.beamWidth, 0)}°</td><td>${round(source.tapPower, 1)} W</td><td>${escapeHtml(requirementStatus)}</td><td>${escapeHtml(Model.normalizeRedundancyGroup(source.redundancyGroup))}</td><td>${escapeHtml(source.loop || "Unassigned")}</td><td>${source.enabled === false ? "Excluded" : active ? "Operating" : "Out in scenario"}</td><td>${source.confidence === "sourced" ? "Sourced" : "Verify"}</td></tr>`;
     }).join("");
-    const loopRows = loops.map((loop) => `<tr><td>${escapeHtml(loop.name)}</td><td>${loop.count}</td><td>${round(loop.connectedLoad, 1)} W</td><td>${round(loop.withHeadroom, 1)} W</td></tr>`).join("");
+    const circuitRows = circuits.map((circuit) => `<tr><td>${escapeHtml(circuit.group)}</td><td>${escapeHtml(circuit.name)}</td><td>${circuit.count}</td><td>${round(circuit.connectedLoad, 1)} W</td><td>${round(circuit.withHeadroom, 1)} W</td><td>${circuit.scenarioActive ? "Operating" : "Out"}</td></tr>`).join("");
     const zoneRows = project.noiseZones.map((zone) => `<tr><td>${escapeHtml(zone.name)}</td><td>${round(zone.x, 1)}, ${round(zone.y, 1)}</td><td>${round(zone.width, 1)} × ${round(zone.depth, 1)} m</td><td>${round(zone.level, 1)} ${unit}</td><td>${round(Model.targetForNoiseZone(project, zone), 1)} ${unit}</td></tr>`).join("");
     const projectOutputRequirement = Model.SOURCE_OUTPUT_REQUIREMENTS[project.sourceOutputRequirement] || Model.SOURCE_OUTPUT_REQUIREMENTS.none;
     const projectOutputRequirementText = `Weatherproof ${round(project.minimumWeatherproofOutput, 1)} dBA; flameproof ${round(project.minimumFlameproofOutput, 1)} dBA at 1 m (rated power). Default source class: ${projectOutputRequirement.key === "none" ? "none" : projectOutputRequirement.projectLabel}.`;
     report.innerHTML = `
       <div class="print-cover">
-        <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}</p></div>
+        <div><div class="section-kicker">PAGA engineering workspace</div><h1>${escapeHtml(project.title)}</h1><p>${escapeHtml(criteria.label)} · Receiver plane ${round(project.receiverHeight, 1)} m · Revision ${escapeHtml(project.revision || "—")}${bidding.enabled ? " · Proposal bidding mode" : ""}</p></div>
         <dl class="print-meta"><dt>Prepared by</dt><dd>${escapeHtml(project.preparedBy || "—")}</dd><dt>Generated</dt><dd>${new Date().toLocaleString()}</dd><dt>Study size</dt><dd>${round(project.width, 1)} × ${round(project.depth, 1)} m</dd><dt>Weighting</dt><dd>${escapeHtml(unit)}</dd></dl>
       </div>
       <div class="print-summary">
@@ -6542,17 +6907,16 @@ kbd {
         <div><span>Meets minimum</span><strong>${round(summary.audiblePercent, 1)}%</strong></div>
         <div><span>Average SPL</span><strong>${round(summary.arithmeticAverage, 1)} ${unit}</strong></div>
         <div><span>Range</span><strong>${round(summary.minimum, 1)}–${round(summary.maximum, 1)}</strong></div>
-        <div><span>Connected load</span><strong>${round(summary.connectedLoad, 1)} W</strong></div>
-        <div><span>Sources</span><strong>${summary.sourceCount}</strong></div>
+        <div><span>Scenario / design load</span><strong>${round(summary.connectedLoad, 1)} / ${round(summary.designConnectedLoad, 1)} W</strong></div>
+        <div><span>Scenario / design sources</span><strong>${summary.sourceCount} / ${summary.designSourceCount}</strong></div>
       </div>
       <img class="print-map" src="${image}" alt="Sound coverage map">
       <div class="print-grid">
-        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
-        <section><h2>Amplifier loop summary</h2><table><thead><tr><th>Loop</th><th>Qty</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th></tr></thead><tbody>${loopRows || `<tr><td colspan="4">No active sources</td></tr>`}</tbody></table>${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
+        <section><h2>Acceptance & model basis</h2><table><tbody><tr><th>Criterion</th><th>Value</th></tr><tr><td>Ambient / required margin</td><td>${round(project.ambientLevel, 1)} ${unit} / +${round(project.requiredMargin, 1)} dB</td></tr><tr><td>Coverage floor</td><td>${round(project.minimumLevel, 1)} ${unit}</td></tr><tr><td>Maximum assessment</td><td>${round(project.maximumLevel, 1)} ${unit} (${project.enforceMaximum ? "enforced" : "reference only"})</td></tr><tr><td>Redundancy scenario</td><td>${escapeHtml(scenarioText)}</td></tr><tr><td>Auto-assignment circuit capacity</td><td>${Math.max(1, Number(project.speakersPerCircuit) || 8)} speakers per circuit</td></tr><tr><td>Outdoor equipment rated output</td><td>${escapeHtml(projectOutputRequirementText)}</td></tr><tr><td>Proposal allowances</td><td>${bidding.enabled ? `Enabled: +${round(bidding.acousticReserveDb, 1)} dB acoustic reserve; ${round(bidding.quantityAllowancePercent, 0)}% installed quantity; ${round(bidding.amplifierHeadroomPercent, 0)}% amplifier headroom; ${round(bidding.looseSparePercent, 0)}% loose spares` : "Disabled"}</td></tr><tr><td>Other / air loss</td><td>${round(project.fixedLoss, 1)} dB / ${round(project.airLossPer100m, 2)} dB per 100 m</td></tr><tr><td>Sampling</td><td>${grid.points.length.toLocaleString()} points at ${round(grid.spacing, 2)} m spacing</td></tr></tbody></table><h3>Engineering notes</h3><div class="print-note">${escapeHtml(project.notes || "No project notes entered.")}</div></section>
+        <section><h2>A/B speaker circuit summary</h2><table><thead><tr><th>Group</th><th>Circuit</th><th>Speakers</th><th>Load</th><th>With ${round(project.amplifierHeadroom, 0)}% spare</th><th>Scenario</th></tr></thead><tbody>${circuitRows || `<tr><td colspan="6">No active design sources</td></tr>`}</tbody></table>${bidding.enabled ? `<h3>Proposal bid allowance</h3><table><tbody><tr><td>Modelled design sources</td><td>${bidding.modelledQuantity}</td></tr><tr><td>Installed bid quantity</td><td>${bidding.installedQuantity} (${bidding.quantityAllowance} allowance)</td></tr><tr><td>Loose spares / total purchase</td><td>${bidding.looseSpareQuantity} / ${bidding.purchaseQuantity}</td></tr><tr><td>Estimated installed load</td><td>${round(bidding.estimatedConnectedLoad, 1)} W</td></tr><tr><td>Minimum amplifier capacity</td><td>${round(bidding.amplifierCapacity, 0)} W</td></tr></tbody></table>` : ""}${zoneRows ? `<h3>Noise zones</h3><table><thead><tr><th>Zone</th><th>Origin</th><th>Size</th><th>Ambient</th><th>Target</th></tr></thead><tbody>${zoneRows}</tbody></table>` : ""}</section>
       </div>
-      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Loop</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="9">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
+      <section class="page-break-before"><h2>Sound source schedule</h2><table><thead><tr><th>Tag</th><th>Model</th><th>X, Y (m)</th><th>Z (m)</th><th>Az. / beam</th><th>Tap</th><th>Output requirement</th><th>Group</th><th>Circuit</th><th>Scenario</th><th>Data</th></tr></thead><tbody>${sourceRows || `<tr><td colspan="11">No sources</td></tr>`}</tbody></table><h3>Model boundary & sources</h3><p class="print-note">Screening calculation: editable reference SPL plus 10 log power adjustment, 20 log distance divergence, optional horizontal/vertical directivity, fixed/air losses, rectangular obstacle insertion loss, and energetic source summation. It remains a free-field model without reverberant buildup, diffraction, octave bands, STI, or full manufacturer polar data; use approved software and field verification for issue.</p><ul class="print-sources"><li>CE-040449-001 - In-Plant Paging Sound Coverage Study</li><li>CE-040450-001 - Emergency Siren Sound Coverage Study</li><li>CE-040451-001 - Public Address Sound Coverage Study</li><li>Maintenance Building_PAGA.pdf; Substation PAGA.pdf; Block Diagram PAGA.pdf</li><li>Acoustic Study.pdf is retained in the repository but did not expose a parseable PDF structure.</li></ul></section>`;
   }
-
   function bindEvents() {
     document.querySelectorAll("[data-project-field]").forEach((control) => {
       const eventName = control.type === "range" ? "input" : "change";
@@ -6577,6 +6941,8 @@ kbd {
         });
       }
     });
+
+    document.getElementById("autoAssignCircuitsButton").addEventListener("click", autoAssignExistingCircuits);
 
     document.querySelectorAll(".mode-option").forEach((button) => {
       button.addEventListener("click", () => {
